@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - TURSO_DATABASE_URL=file:./data/local.db
+      - ALLOWED_ORIGINS=http://localhost:3000
+    volumes:
+      - ./data:/app/data
