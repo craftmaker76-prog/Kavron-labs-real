@@ -48699,6 +48699,16 @@ var require_app = __commonJS({
 var loaded = require_app();
 var app = typeof loaded === "function" ? loaded : loaded && (loaded.default || loaded.app);
 function handler(req, res) {
+  try {
+    const u = new URL(req.url, "http://localhost");
+    const p = u.searchParams.get("__path");
+    if (p) {
+      u.searchParams.delete("__path");
+      const q = u.searchParams.toString();
+      req.url = p + (q ? "?" + q : "");
+    }
+  } catch {
+  }
   return app(req, res);
 }
 module.exports = handler;
