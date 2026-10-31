@@ -1,7 +1,8 @@
 // Vercel serverless entry ONLY. No business logic lives here.
-// Vercel reported "No exports found" for a bare Express app export,
-// so export an explicit handler function as well as .default and .app.
-const app = require('../backend/app');
+// Vercel returned "app is not a function" for the plain require, so
+// unwrap whatever shape backend/app arrives in: a function, .default, or .app.
+const loaded = require('../backend/app');
+const app = (typeof loaded === 'function') ? loaded : (loaded && (loaded.default || loaded.app));
 function handler(req, res) { return app(req, res); }
 module.exports = handler;
 module.exports.default = handler;
