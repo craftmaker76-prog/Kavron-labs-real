@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index.js" }],
-  "functions": { "api/index.js": { "includeFiles": "frontend/public/**" } }
+  "functions": { "api/index.js": { "includeFiles": ["backend/**", "frontend/public/**"] } }
 }
