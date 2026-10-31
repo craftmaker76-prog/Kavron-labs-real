@@ -1,20 +1,22 @@
-// Vercel serverless entry ONLY - diagnostic version.
-// If backend/app does not arrive as a function, answer with what it
-// actually is instead of crashing, so the next fix is based on fact.
-const loaded = require('../backend/app');
-const app = (typeof loaded === 'function') ? loaded : (loaded && (loaded.default || loaded.app));
+// Vercel serverless entry ONLY - bisect probe (no secrets in output).
+// Reports ONLY the type/keys of each backend piece, never any values.
+const report = {};
+function tryRequire(name, path) {
+  try {
+    const m = require(path);
+    report[name] = { type: typeof m, keys: (m && typeof m === 'object') ? Object.keys(m) : null };
+  } catch (e) {
+    report[name] = { error: String(e && e.message ? e.message : e) };
+  }
+}
+tryRequire('config', '../backend/config/env');
+tryRequire('dbClient', '../backend/db/client');
+tryRequire('healthRouter', '../backend/routes/health');
+tryRequire('app', '../backend/app');
 function handler(req, res) {
-  if (typeof app === 'function') return app(req, res);
-  res.statusCode = 500;
+  res.statusCode = 200;
   res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({
-    error: 'backend/app is not a function on Vercel',
-    loadedType: typeof loaded,
-    loadedKeys: loaded && typeof loaded === 'object' ? Object.keys(loaded) : null,
-    hasDefault: !!(loaded && loaded.default),
-    hasApp: !!(loaded && loaded.app)
-  }));
+  res.end(JSON.stringify(report));
 }
 module.exports = handler;
 module.exports.default = handler;
-module.exports.app = app;
