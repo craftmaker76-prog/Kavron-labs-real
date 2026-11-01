@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Panel — Kavron Labs</title>
+<link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="kmark">K</span> Kavron Labs <span class="panel-tag">Admin Panel</span></div>
+  <div class="top-actions">
+    <span id="whoamiLine" class="whoami" hidden></span>
+    <button id="logoutBtn" class="btn btn-ghost" hidden>Log out</button>
+  </div>
+</header>
+<p class="panel-note">This panel is NOT linked from the public site. Only admins can open it.</p>
+<p id="pageMsg" class="msg" hidden></p>
+
+<section id="loginGate" class="card gate">
+  <h2>Admin log in</h2>
+  <p>Please log in with your admin account to open the panel.</p>
+  <label>Email <input id="loginEmail" type="email" autocomplete="username"></label>
+  <label>Password <input id="loginPass" type="password" autocomplete="current-password"></label>
+  <button id="loginBtn" class="btn btn-primary">Log in</button>
+  <p id="loginMsg" class="msg" hidden></p>
+</section>
+
+<div id="toolUI" class="layout" hidden>
+  <aside class="sidebar">
+    <button class="nav-btn active" data-section="providersSec">Providers</button>
+    <button class="nav-btn" data-section="notificationsSec">🔔 Notifications <span id="bellBadge" class="badge" hidden>0</span></button>
+    <button class="nav-btn" data-section="auditSec">Audit log</button>
+  </aside>
+  <main class="main">
+    <section id="providersSec" class="section">
+      <h2>Providers</h2>
+      <p class="hint">Keys saved here are encrypted and take effect instantly — no redeploy. A key is never shown back, only its last 4 characters.</p>
+      <div id="providerCards"></div>
+    </section>
+    <section id="notificationsSec" class="section" hidden>
+      <h2>Notifications <span id="notifUnread" class="badge" hidden></span></h2>
+      <button id="markAllReadBtn" class="btn">Mark all as read</button>
+      <div id="notifList"></div>
+    </section>
+    <section id="auditSec" class="section" hidden>
+      <h2>Audit log</h2>
+      <p class="hint">Every admin action, newest first.</p>
+      <div id="auditList"></div>
+    </section>
+  </main>
+</div>
+
+<script src="/admin.js"></script>
+</body>
+</html>

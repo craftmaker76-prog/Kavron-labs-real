@@ -1,0 +1,50 @@
+/* Admin panel — same look as the public site: navy header, indigo accent. */
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #F8FAFC; color: #0F172A; }
+.topbar { background: #0F172A; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.brand { font-weight: 700; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+.kmark { background: #4F46E5; color: #fff; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 800; }
+.panel-tag { background: #4F46E5; color: #fff; font-size: 12px; padding: 3px 8px; border-radius: 20px; }
+.whoami { font-size: 13px; opacity: .85; }
+.panel-note { text-align: center; font-size: 13px; color: #64748B; margin: 10px; }
+.msg { max-width: 720px; margin: 12px auto; padding: 10px 14px; border-radius: 8px; background: #E0E7FF; color: #1E1B4B; font-size: 14px; }
+.msg.error { background: #FEE2E2; color: #7F1D1D; }
+.card { background: #fff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; max-width: 520px; margin: 20px auto; }
+.card h2 { margin-top: 0; }
+label { display: block; margin: 10px 0; font-size: 14px; }
+input[type="email"], input[type="password"], input[type="text"] { width: 100%; padding: 9px 10px; margin-top: 4px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 14px; }
+.btn { background: #fff; border: 1px solid #CBD5E1; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+.btn-primary { background: #4F46E5; border-color: #4F46E5; color: #fff; }
+.btn-ghost { background: transparent; border-color: #334155; color: #fff; }
+.btn-danger { border-color: #FCA5A5; color: #991B1B; }
+.btn:disabled { opacity: .55; cursor: default; }
+.layout { display: flex; gap: 0; max-width: 1100px; margin: 0 auto 40px; align-items: flex-start; }
+.sidebar { width: 210px; flex-shrink: 0; padding: 16px 12px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; }
+.nav-btn { text-align: left; background: #fff; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; cursor: pointer; font-size: 14px; }
+.nav-btn.active { background: #4F46E5; color: #fff; border-color: #4F46E5; }
+.badge { background: #DC2626; color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 20px; margin-left: 6px; }
+.main { flex: 1; padding: 16px; min-width: 0; }
+.section h2 { margin-top: 0; }
+.hint { font-size: 13px; color: #64748B; }
+.pcard { background: #fff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; margin: 14px 0; }
+.pcard h3 { margin: 0 0 6px; }
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-left: 6px; }
+.pill-wired { background: #DCFCE7; color: #166534; }
+.pill-soon { background: #FEF3C7; color: #92400E; }
+.pill-off { background: #FEE2E2; color: #991B1B; }
+.meta { font-size: 13px; color: #475569; margin: 4px 0; }
+.bar { height: 8px; background: #E2E8F0; border-radius: 8px; overflow: hidden; margin: 6px 0; }
+.bar > div { height: 100%; background: #4F46E5; }
+/* CSP-safe widths (no inline style allowed): nearest 10%. */
+.w-0 { width: 0%; } .w-10 { width: 10%; } .w-20 { width: 20%; } .w-30 { width: 30%; } .w-40 { width: 40%; } .w-50 { width: 50%; } .w-60 { width: 60%; } .w-70 { width: 70%; } .w-80 { width: 80%; } .w-90 { width: 90%; } .w-100 { width: 100%; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.row input[type="text"] { flex: 1; min-width: 180px; margin-top: 0; }
+.notif { background: #fff; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px; margin: 10px 0; }
+.notif.unread { border-left: 4px solid #DC2626; }
+.notif .t { font-size: 12px; color: #64748B; }
+.audit-row { font-size: 13px; padding: 8px 0; border-bottom: 1px solid #F1F5F9; }
+[hidden] { display: none !important; }
+@media (max-width: 700px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; position: static; flex-direction: row; flex-wrap: wrap; }
+}
