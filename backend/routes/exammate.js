@@ -7,6 +7,7 @@ const { csrfProtect } = require('../middleware/csrf');
 const { dbRateLimit } = require('../middleware/rateLimit');
 const { cleanText, EXAMMATE_MAX_QUESTION, EXAMMATE_MAX_SUBJECT } = require('../validators');
 const { aiTextToSafeHtml } = require('../services/exammate/sanitize');
+const { askWithFallback } = require('../services/exammate/providers');
 // Per-user daily cap, counted in the DB (Vercel-safe, not memory).
 async function dailyUsage(userId) {
   const c = getClient();
@@ -38,28 +39,19 @@ router.post('/ask', requireAuth, csrfProtect, dbRateLimit({ limit: 30, windowMin
     if (await monthlyTokens() >= config.exammateMonthlyTokenCap) {
       return res.status(503).json({ error: 'ExamMate is temporarily unavailable because the monthly AI budget has been reached.' });
     }
-    // NO FAKE ANSWER. If no key is configured, say so honestly.
-    if (!config.geminiKey) {
+    // NO FAKE ANSWER. If no provider key is configured at all, say so honestly.
+    if (!config.geminiKey && !config.groqKey && !config.openrouterKey && !config.museKey) {
       return res.status(503).json({ error: 'AI service is not configured yet. Please try again later.' });
     }
-    // Real Gemini call, with a 30s timeout and ONE controlled retry on 5xx.
+    // Provider chain: Gemini first, then free Groq, free OpenRouter, then
+    // the paid Muse Model API. The chain IS the retry — a second provider
+    // answers better than retrying the same overloaded one. If every
+    // provider fails, the honest 502 below is the answer, never a fake.
     const prompt = `You are a school tutor. Country: ${country}. Region: ${province}. Class: ${className}. Subject: ${subject}. Answer the student's question in the same language as the question. Do not provide leaked exam papers. Question: ${question}`;
-    let lastErr = null; let data = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 30000);
-        const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(config.geminiKey)}`, {
-          method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        });
-        clearTimeout(timer);
-        if (resp.status >= 500 && attempt === 0) { lastErr = new Error('provider 5xx'); continue; }
-        if (!resp.ok) return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again in a little while.' });
-        data = await resp.json(); break;
-      } catch (e) { lastErr = e; if (attempt === 1) return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again in a little while.' }); }
-    }
-    const raw = (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts || []).map(p => p.text || '').join('');
-    if (!raw) return res.status(502).json({ error: 'AI service returned an empty answer. Please try again.' });
+    const result = await askWithFallback({ prompt, config });
+    if (!result) return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again in a little while.' });
+    console.log('exammate answered by', result.provider);
+    const raw = result.text;
     const safeHtml = aiTextToSafeHtml(raw);
     const c = getClient();
     // Privacy-aware storage: question + answer only. Photos are never stored.
