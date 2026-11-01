@@ -42,7 +42,7 @@ async function ask(){
   addMsg('user', subject + ' · ' + className + ' · ' + country + ' / ' + province, q, false);
   $('q').value = '';
   $('askBtn').disabled = true;
-  $('status').textContent = 'Getting your answer… This can take up to 30 seconds.';
+  $('status').textContent = 'Getting your answer… This can take up to a minute.';
   try{
     const r = await fetch('/api/exammate/ask', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken}, credentials:'include', body:JSON.stringify({question:q, subject, country, province, className})});
     const j = await r.json();
