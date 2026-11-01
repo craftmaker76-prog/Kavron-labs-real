@@ -1,31 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kavron Labs — Professional AI Tools</title><link rel="icon" href="data:,"><style>
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;line-height:1.5}
-a{color:#4f46e5;text-decoration:none}a:hover{text-decoration:underline}
-.wrap{max-width:960px;margin:0 auto;padding:0 16px}
-.topbar{background:#0f172a;color:#fff}.topbar-in{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:10px;color:#fff}.brand:hover{text-decoration:none}
-.mark{display:inline-flex;width:36px;height:36px;border-radius:9px;background:#4f46e5;color:#fff;font-weight:700;font-size:20px;align-items:center;justify-content:center}
-.brand-name{font-weight:700;font-size:20px;letter-spacing:.2px}
-.nav{display:flex;gap:18px}.nav a{color:#c7d2fe}.nav a:hover{color:#fff}
-.hero{padding:48px 0 24px}.hero h1{font-size:40px;line-height:1.15;margin:0 0 12px}.lede{font-size:18px;color:#475569;max-width:640px;margin:0 0 20px}
-.cta-row{display:flex;gap:12px;flex-wrap:wrap}
-.btn{display:inline-block;padding:11px 20px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;cursor:pointer}
-.btn.primary{background:#4f46e5;border-color:#4f46e5;color:#fff}.btn:hover{text-decoration:none;opacity:.92}
-h2{font-size:24px;margin:32px 0 14px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px}.card h3{margin:0 0 6px}.card p{color:#475569;margin:0 0 12px}
-.badge{display:inline-block;background:#fef3c7;color:#92400e;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:600}
-.card.live{border-color:#c7d2fe}
-.panel{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-top:8px}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.form-grid h3{margin:0 0 8px}
-input,textarea{width:100%;padding:10px;margin:6px 0;border:1px solid #cbd5e1;border-radius:8px;font:inherit}
-button{padding:11px 20px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;font:inherit;font-weight:600;cursor:pointer}
-button:hover{border-color:#94a3b8}
-#me,#regMsg{color:#475569;word-break:break-word}
-#answer{margin-top:14px}
-.foot{padding:28px 16px 40px;color:#64748b;font-size:14px}
-@media(max-width:640px){.hero h1{font-size:30px}.grid,.form-grid{grid-template-columns:1fr}}
-</style></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kavron Labs — Professional AI Tools</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/style.css"></head><body>
 <header class="topbar"><div class="wrap topbar-in">
 <a class="brand" href="/"><span class="mark">K</span><span class="brand-name">Kavron Labs</span></a>
 <nav class="nav"><a href="#tools">Tools</a><a href="#account">Account</a><a href="#exammate">ExamMate</a></nav>
@@ -49,21 +22,16 @@ button:hover{border-color:#94a3b8}
 <h2>Your account</h2>
 <p>Register for a free account, or log in. Never paste a real password in chat.</p>
 <div class="form-grid">
-<div><h3>Log in</h3><input id="email" placeholder="Email" autocomplete="email"><input id="password" type="password" placeholder="Password" autocomplete="current-password"><button onclick="login()">Log in</button> <button onclick="logout()">Log out</button><p id="me"></p></div>
-<div><h3>Register</h3><input id="regEmail" placeholder="Email" autocomplete="email"><input id="regPassword" type="password" placeholder="Password (at least 12 characters)" autocomplete="new-password"><button onclick="register()">Register</button><p id="regMsg"></p></div>
+<div><h3>Log in</h3><input id="email" placeholder="Email" autocomplete="email"><input id="password" type="password" placeholder="Password" autocomplete="current-password"><button id="loginBtn">Log in</button> <button id="logoutBtn">Log out</button><p id="me"></p></div>
+<div><h3>Register</h3><input id="regEmail" placeholder="Email" autocomplete="email"><input id="regPassword" type="password" placeholder="Password (at least 12 characters)" autocomplete="new-password"><button id="registerBtn">Register</button><p id="regMsg"></p></div>
 </div>
 </section>
 <section id="exammate" class="panel">
 <h2>ExamMate (server-side)</h2>
 <p>Log in first, then ask. This demo answers Class 10 questions for Pakistan / Punjab.</p>
 <textarea id="q" placeholder="Type a question (max 2000 characters)"></textarea>
-<input id="subject" placeholder="Subject"><button onclick="ask()">Ask ExamMate</button><div id="answer"></div>
+<input id="subject" placeholder="Subject"><button id="askBtn">Ask ExamMate</button><div id="answer"></div>
 </section>
 </main>
 <footer class="wrap foot"><p>Admin is NOT linked from this public site — admin login is server-side only.</p><p><a href="/health">Health check</a> &middot; <a href="/ready">Ready check</a> &middot; &copy; Kavron Labs</p></footer>
-<script>
-async function login(){const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});document.getElementById('me').textContent=await r.text();}
-async function logout(){const me=await (await fetch('/api/auth/me',{credentials:'include'})).json();await fetch('/api/auth/logout',{method:'POST',headers:{'X-CSRF-Token':me.csrfToken},credentials:'include'});document.getElementById('me').textContent='Logged out';}
-async function register(){const r=await fetch('/api/auth/register',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({email:document.getElementById('regEmail').value,password:document.getElementById('regPassword').value})});document.getElementById('regMsg').textContent=await r.text();}
-async function ask(){const me=await (await fetch('/api/auth/me',{credentials:'include'})).json();const r=await fetch('/api/exammate/ask',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken},credentials:'include',body:JSON.stringify({question:document.getElementById('q').value,subject:document.getElementById('subject').value,country:'Pakistan',province:'Punjab',className:'Class 10'})});const j=await r.json();document.getElementById('answer').innerHTML=j.answerHtml||j.error||'Error';}
-</script></body></html>
+<script src="/app.js"></script></body></html>
