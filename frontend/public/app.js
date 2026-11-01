@@ -9,6 +9,7 @@
 // - After a successful login the forms disappear and the logged-in
 //   view appears. After logout the forms come back.
 // - Messages are plain words, never raw JSON.
+// (ExamMate now lives on its own page: /exammate.html.)
 async function refreshAuth(){
   try{
     const r=await fetch('/api/auth/me',{credentials:'include'});
@@ -43,15 +44,7 @@ async function register(){
   if(!r.ok){document.getElementById('regMsg').textContent=await readError(r,'Registration failed. Please try again.');return;}
   document.getElementById('regMsg').textContent='Account created! Now log in.';
 }
-async function ask(){
-  const meR=await fetch('/api/auth/me',{credentials:'include'});
-  if(!meR.ok){document.getElementById('answer').textContent='Please log in first.';return;}
-  const me=await meR.json();
-  const r=await fetch('/api/exammate/ask',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken},credentials:'include',body:JSON.stringify({question:document.getElementById('q').value,subject:document.getElementById('subject').value,country:'Pakistan',province:'Punjab',className:'Class 10'})});
-  const j=await r.json();document.getElementById('answer').innerHTML=j.answerHtml||j.error||'Error';
-}
 document.getElementById('loginBtn').addEventListener('click',login);
 document.getElementById('logoutBtn').addEventListener('click',logout);
 document.getElementById('registerBtn').addEventListener('click',register);
-document.getElementById('askBtn').addEventListener('click',ask);
 refreshAuth();

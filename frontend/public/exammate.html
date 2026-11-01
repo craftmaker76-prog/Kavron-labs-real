@@ -1,0 +1,50 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ExamMate — Kavron Labs</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/exammate.css"></head><body>
+<header class="topbar"><div class="wrap topbar-in">
+<a class="brand" href="/"><span class="mark">K</span><span class="brand-name">Kavron Labs</span></a>
+<nav class="nav"><a href="/#tools">Tools</a><a href="/#account">Account</a><a href="/exammate.html">ExamMate</a></nav>
+</div></header>
+<main class="wrap">
+<h1>ExamMate</h1>
+<p class="lede">Ask study questions. Your question and its answer appear below, like a chat — everything stays visible.</p>
+<div id="loginGate" class="panel" hidden><p>Please <a href="/#account">log in</a> first to use ExamMate.</p></div>
+<div id="toolUI">
+<p id="whoamiLine" class="muted"></p>
+<section class="panel">
+<div class="settings">
+<label>Country
+<select id="country">
+<option value="Pakistan" selected>Pakistan</option>
+<option value="India">India</option>
+<option value="Afghanistan">Afghanistan</option>
+<option value="Bangladesh">Bangladesh</option>
+<option value="Nepal">Nepal</option>
+<option value="Sri Lanka">Sri Lanka</option>
+<option value="United States">United States</option>
+<option value="Canada">Canada</option>
+</select></label>
+<label>Province / State
+<select id="provinceSelect">
+<option value="Punjab" selected>Punjab</option>
+<option value="Sindh">Sindh</option>
+<option value="Khyber Pakhtunkhwa">Khyber Pakhtunkhwa</option>
+<option value="Balochistan">Balochistan</option>
+<option value="Gilgit-Baltistan">Gilgit-Baltistan</option>
+<option value="Azad Jammu &amp; Kashmir">Azad Jammu &amp; Kashmir</option>
+</select><input id="provinceText" placeholder="Province / State" hidden></label>
+<label>Class
+<input id="className" placeholder="e.g. Class 10"></label>
+<label>Subject
+<input id="subject" placeholder="e.g. Mathematics"></label>
+</div>
+</section>
+<div id="chat" class="chat"></div>
+<p id="status" class="muted"></p>
+<div class="composer">
+<textarea id="q" placeholder="Type your question here..."></textarea>
+<button id="askBtn">Ask ExamMate</button>
+</div>
+<p class="muted small">This chat shows this visit only. Your questions are saved to your account. Answers appear in the language of your question.</p>
+</div>
+</main>
+<footer class="wrap foot"><p>Admin is NOT linked from this public site — admin login is server-side only.</p><p><a href="/health">Health check</a> &middot; <a href="/ready">Ready check</a> &middot; &copy; Kavron Labs</p></footer>
+<script src="/exammate.js"></script></body></html>
