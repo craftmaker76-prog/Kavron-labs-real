@@ -1,13 +1,13 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kavron Labs</title><link rel="icon" href="data:,"><style>body{font-family:system-ui;max-width:720px;margin:40px auto;padding:0 16px}input,textarea{width:100%;padding:8px;margin:6px 0}button{padding:10px 16px}</style></head><body>
-<h1>Kavron Labs</h1><p>Professional AI tools. Admin is NOT linked from this public site — admin login is server-side only.</p>
-<p><a href="/health">Health check</a> · <a href="/ready">Ready check</a></p>
-<h2>Login (demo)</h2><p>Use the test user from seed, or an admin created with scripts/create-admin.js. Never paste a real password in chat.</p>
-<input id="email" placeholder="Email"><input id="password" type="password" placeholder="Password">
-<button onclick="login()">Log in</button><button onclick="logout()">Log out</button><p id="me"></p>
-<h2>ExamMate (server-side)</h2><textarea id="q" placeholder="Type a question (max 2000 characters)"></textarea>
-<input id="subject" placeholder="Subject"><button onclick="ask()">Ask ExamMate</button><div id="answer"></div>
-<script>
-async function login(){const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});document.getElementById('me').textContent=await r.text();}
-async function logout(){const me=await (await fetch('/api/auth/me',{credentials:'include'})).json();await fetch('/api/auth/logout',{method:'POST',headers:{'X-CSRF-Token':me.csrfToken},credentials:'include'});document.getElementById('me').textContent='Logged out';}
-async function ask(){const me=await (await fetch('/api/auth/me',{credentials:'include'})).json();const r=await fetch('/api/exammate/ask',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken},credentials:'include',body:JSON.stringify({question:document.getElementById('q').value,subject:document.getElementById('subject').value,country:'Pakistan',province:'Punjab',className:'Class 10'})});const j=await r.json();document.getElementById('answer').innerHTML=j.answerHtml||j.error||'Error';}
-</script></body></html>
+  <h1>Kavron Labs</h1><p>Professional AI tools. Admin is NOT linked from this public site — admin login is server-side only.</p>
+  <p><a href="/health">Health check</a> · <a href="/ready">Ready check</a></p>
+  <h2>Login (demo)</h2><p>Register for a free account, or log in. Never paste a real password in chat.</p>
+  <input id="email" placeholder="Email"><input id="password" type="password" placeholder="Password">
+  <button onclick="login()">Log in</button><button onclick="logout()">Log out</button><p id="me"></p>
+  <h2>ExamMate (server-side)</h2><textarea id="q" placeholder="Type a question (max 2000 characters)"></textarea>
+  <input id="subject" placeholder="Subject"><button onclick="ask()">Ask ExamMate</button><div id="answer"></div>
+  <script>
+  async function login(){const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});document.getElementById('me').textContent=await r.text();}
+  async function logout(){const me=await (await fetch('/api/auth/me',{credentials:'include'})).json();await fetch('/api/auth/logout',{method:'POST',headers:{'X-CSRF-Token':me.csrfToken},credentials:'include'});document.getElementById('me').textContent='Logged out';}
+  async function ask(){const me=await (await fetch('/api/auth/me',{credentials:'include'})).json();const r=await fetch('/api/exammate/ask',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken},credentials:'include',body:JSON.stringify({question:document.getElementById('q').value,subject:document.getElementById('subject').value,country:'Pakistan',province:'Punjab',className:'Class 10'})});const j=await r.json();document.getElementById('answer').innerHTML=j.answerHtml||j.error||'Error';}
+  </script></body></html>
