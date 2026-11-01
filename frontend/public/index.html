@@ -20,10 +20,16 @@
 </section>
 <section id="account" class="panel">
 <h2>Your account</h2>
+<div id="authForms">
 <p>Register for a free account, or log in. Never paste a real password in chat.</p>
 <div class="form-grid">
-<div><h3>Log in</h3><input id="email" placeholder="Email" autocomplete="email"><input id="password" type="password" placeholder="Password" autocomplete="current-password"><button id="loginBtn">Log in</button> <button id="logoutBtn">Log out</button><p id="me"></p></div>
+<div><h3>Log in</h3><input id="email" placeholder="Email" autocomplete="email"><input id="password" type="password" placeholder="Password" autocomplete="current-password"><button id="loginBtn">Log in</button><p id="authMsg"></p></div>
 <div><h3>Register</h3><input id="regEmail" placeholder="Email" autocomplete="email"><input id="regPassword" type="password" placeholder="Password (at least 12 characters)" autocomplete="new-password"><button id="registerBtn">Register</button><p id="regMsg"></p></div>
+</div>
+</div>
+<div id="loggedInView" hidden>
+<p id="whoami"></p>
+<button id="logoutBtn">Log out</button>
 </div>
 </section>
 <section id="exammate" class="panel">
