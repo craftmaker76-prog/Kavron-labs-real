@@ -59,27 +59,69 @@ function renderProviders(providers) {
     const card = document.createElement('div');
     card.className = 'pcard';
     card.id = 'provider-' + p.id;
-    const limitLine = p.dailyLimit
-      ? `<div class="meta">Today: ${p.today} / ${p.dailyLimit} (${p.limitPeriod})</div><div class="bar"><div class="w-${Math.min(100, Math.round((p.today / p.dailyLimit) * 10) * 10)}"></div></div>`
+    // Status pill: manual state, never the auto-off confusion — the toggle
+    // button below always reflects the manual enabled flag. Unwired
+    // providers have no chain entry (old "In race" wording is gone: the
+    // race was rejected, selection is manual now).
+    const status = p.status || (p.enabled ? 'Active' : 'Off');
+    const statusPill = !p.wired ? '<span class="pill pill-soon">Not wired</span>'
+      : status === 'Auto-off (limit reached)' ? '<span class="pill pill-limit">Auto-off (limit reached)</span>'
+      : status === 'Off' ? '<span class="pill pill-off">OFF</span>'
+      : '<span class="pill pill-wired">Active</span>';
+    const eff = p.effective_limit;
+    const pct = eff === null || eff === undefined ? 0 : (eff > 0 ? Math.min(100, Math.round((p.today / eff) * 10) * 10) : 100);
+    const limitLine = eff !== null && eff !== undefined
+      ? `<div class="meta">Today: ${p.today} / ${eff} (day)</div><div class="bar"><div class="w-${pct}"></div></div>`
       : `<div class="meta">Today: ${p.today} questions${p.limitNote ? ' — ' + esc(p.limitNote) : ''}</div>`;
+    const limitNoteLine = p.custom_limit !== null && p.custom_limit !== undefined
+      ? `<div class="meta">Custom limit: ${p.custom_limit} questions/day</div>`
+      : (p.dailyLimit ? `<div class="meta">Published limit: ${p.dailyLimit}/${p.limitPeriod || 'day'}</div>` : '');
     const keyLine = p.keySource === 'panel'
       ? `Key: saved in panel (${esc(p.keyHint || '')})`
       : p.keySource === 'env' ? 'Key: from Vercel env' : 'Key: not set';
     const fieldsHtml = p.keyFields.map((f) => `<label>${esc(f.label)} <input type="text" data-field="${esc(f.name)}" placeholder="${esc(f.label)}"></label>`).join('');
+    // Muse is a dormant paid fallback, not part of manual limit control:
+    // no limit form is offered for it (its chain step is unchanged).
+    const limitForm = p.id === 'muse' ? '' :
+      `<div class="limitform"><label>Daily limit (questions/day)</label><div class="row"><input type="number" class="limit-input" min="0" max="1000000" step="1" placeholder="${eff !== null && eff !== undefined ? 'Current: ' + eff : 'No limit'}" value="${p.custom_limit !== null && p.custom_limit !== undefined ? p.custom_limit : ''}"><button class="btn save-limit">Save limit</button></div><div class="meta">Empty = clear custom limit (published limit or unlimited applies).</div></div>`;
     card.innerHTML =
-      `<h3>${esc(p.name)}${p.wired ? '<span class="pill pill-wired">In race</span>' : '<span class="pill pill-soon">Coming to race</span>'}${p.enabled ? '' : '<span class="pill pill-off">OFF</span>'}</h3>` +
+      `<h3>${esc(p.name)}${statusPill}</h3>` +
       `<div class="meta">${keyLine}</div>` +
       limitLine +
+      limitNoteLine +
       `<div class="meta">This month: ${p.monthTokens} tokens</div>` +
-      `<div class="row"><label><input type="checkbox" class="toggle" ${p.enabled ? 'checked' : ''}> Enabled</label></div>` +
+      `<div class="row"><button class="btn toggle-btn ${p.enabled ? 'on' : 'off'}">${p.enabled ? 'ON' : 'OFF'}</button><span class="meta">Click to turn ${p.enabled ? 'off' : 'on'}.</span></div>` +
+      limitForm +
       `<div class="keyform">${fieldsHtml}<div class="row"><button class="btn btn-primary save-key">Save key</button>${p.keySource === 'panel' ? '<button class="btn btn-danger delete-key">Delete key</button>' : ''}</div></div>`;
-    card.querySelector('.toggle').addEventListener('change', async (ev) => {
+    card.querySelector('.toggle-btn').addEventListener('click', async () => {
       try {
         hideMsg();
-        await api('/api/admin/providers/' + p.id + '/toggle', { method: 'POST', headers: csrfHeaders(), body: JSON.stringify({ enabled: ev.target.checked }) });
-        showMsg(p.name + (ev.target.checked ? ' is ON.' : ' is OFF. The chain will skip it.'));
+        const next = !p.enabled;
+        await api('/api/admin/providers/' + p.id + '/toggle', { method: 'POST', headers: csrfHeaders(), body: JSON.stringify({ enabled: next }) });
+        showMsg(p.name + (next ? ' is ON.' : ' is OFF. The chain will skip it.'));
         loadProviders();
-      } catch (e) { showMsg(e.message, true); ev.target.checked = !ev.target.checked; }
+      } catch (e) { showMsg(e.message, true); loadProviders(); }
+    });
+    const saveLimit = card.querySelector('.save-limit');
+    if (saveLimit) saveLimit.addEventListener('click', async () => {
+      try {
+        hideMsg();
+        const inp = card.querySelector('.limit-input');
+        const raw = inp.value.trim();
+        let limit;
+        if (raw === '') {
+          limit = null;
+        } else {
+          limit = Number(raw);
+          if (!Number.isInteger(limit) || limit < 0 || limit > 1000000) {
+            showMsg('Daily limit must be a whole number between 0 and 1000000, or empty to clear it.', true);
+            return;
+          }
+        }
+        await api('/api/admin/providers/' + p.id + '/limit', { method: 'POST', headers: csrfHeaders(), body: JSON.stringify({ limit }) });
+        showMsg(limit === null ? p.name + ' custom limit cleared.' : p.name + ' daily limit set to ' + limit + ' questions/day.');
+        loadProviders();
+      } catch (e) { showMsg(e.message, true); }
     });
     card.querySelector('.save-key').addEventListener('click', async () => {
       try {
