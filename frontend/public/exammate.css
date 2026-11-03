@@ -14,3 +14,17 @@
 .composer button{white-space:nowrap;margin-top:6px}
 button:disabled{opacity:.55;cursor:wait}
 @media(max-width:640px){.settings{grid-template-columns:1fr}.composer{flex-direction:column}.composer button{width:100%}}
+/* Rendered ExamMate answers (server-converted markdown, .msg.ai .body only) */
+.msg.ai .body h1,.msg.ai .body h2,.msg.ai .body h3,.msg.ai .body h4,.msg.ai .body h5,.msg.ai .body h6{margin:14px 0 6px;line-height:1.3}
+.msg.ai .body h1{font-size:22px}.msg.ai .body h2{font-size:20px}.msg.ai .body h3{font-size:18px}.msg.ai .body h4,.msg.ai .body h5,.msg.ai .body h6{font-size:16px}
+.msg.ai .body p{margin:8px 0}
+.msg.ai .body ul,.msg.ai .body ol{margin:8px 0;padding-left:24px}
+.msg.ai .body li{margin:3px 0}
+.msg.ai .body table{border-collapse:collapse;margin:10px 0;width:100%}
+.msg.ai .body th,.msg.ai .body td{border:1px solid #e2e8f0;padding:6px 10px;text-align:left}
+.msg.ai .body th{background:#f1f5f9}
+.msg.ai .body blockquote{border-left:3px solid #cbd5e1;margin:10px 0;padding:4px 12px;color:#475569}
+.msg.ai .body code{background:#f1f5f9;padding:1px 5px;border-radius:4px}
+.msg.ai .body pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow-x:auto}
+.msg.ai .body pre code{background:none;padding:0;color:inherit}
+.msg.ai .body a{color:#4f46e5}
