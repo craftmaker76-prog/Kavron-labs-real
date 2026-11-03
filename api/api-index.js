@@ -23877,12 +23877,14 @@ var require_env = __commonJS({
       groqKey: (process.env.GROQ_API_KEY || "").trim(),
       openrouterKey: (process.env.OPENROUTER_API_KEY || "").trim(),
       mistralKey: (process.env.MISTRAL_API_KEY || "").trim(),
+      cohereKey: (process.env.COHERE_API_KEY || "").trim(),
       // Meta Model API key (dev.meta.ai, starts LLM_). A Muse APP account's
       // tokens cannot power this — only a Model API key can.
       museKey: (process.env.MODEL_API_KEY || "").trim(),
       groqModel: (process.env.GROQ_MODEL || "openai/gpt-oss-20b").trim(),
       openrouterModel: (process.env.OPENROUTER_MODEL || "openrouter/free").trim(),
       mistralModel: (process.env.MISTRAL_MODEL || "mistral-small-latest").trim(),
+      cohereModel: (process.env.COHERE_MODEL || "command-a-plus-05-2026").trim(),
       museModel: (process.env.MUSE_MODEL || "muse-wonder-1.0").trim(),
       exammateDailyCap: num(process.env.EXAMMATE_DAILY_CAP_PER_USER, 20),
       exammateMonthlyTokenCap: num(process.env.EXAMMATE_MONTHLY_TOKEN_CAP, 1e6),
@@ -48524,19 +48526,162 @@ var require_sanitize_html = __commonJS({
 var require_sanitize = __commonJS({
   "kavron-labs/backend/services/exammate/sanitize.js"(exports2, module2) {
     var sanitizeHtml = require_sanitize_html();
+    var ALLOWED_TAGS = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "strong", "em", "ul", "ol", "li", "code", "pre", "a", "table", "thead", "tbody", "tr", "th", "td", "blockquote", "hr", "br"];
     function sanitizeAiOutput(html) {
       if (typeof html !== "string") return "";
       return sanitizeHtml(html, {
-        allowedTags: ["p", "br", "b", "strong", "i", "em", "ul", "ol", "li", "h2", "h3", "code", "pre"],
-        allowedAttributes: {},
+        allowedTags: ALLOWED_TAGS,
+        allowedAttributes: { a: ["href"] },
+        allowedSchemes: ["http", "https"],
+        allowedSchemesByTag: {},
+        allowedSchemesAppliedToAttributes: ["href"],
+        allowProtocolRelative: false,
         disallowedTagsMode: "discard"
       });
     }
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+    function renderInline(escaped) {
+      const codeSpans = [];
+      let out = escaped.replace(/`([^`\n]+?)`/g, (_, code) => {
+        codeSpans.push(code);
+        return "\0" + (codeSpans.length - 1) + "\0";
+      });
+      out = out.replace(/!\[([^\]]*)\]\([^)\s]+\)/g, "$1");
+      out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, url) => {
+        if (/^https?:\/\//i.test(url)) return '<a href="' + url.replace(/"/g, "&quot;") + '">' + text + "</a>";
+        return text;
+      });
+      out = out.replace(/\*\*([^<]+?)\*\*/g, "<strong>$1</strong>");
+      out = out.replace(/(^|[\s(])\*([^<*\n]+?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+      out = out.replace(/(^|[\s(])_([^<_\n]+?)_(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+      out = out.replace(/\u0000(\d+)\u0000/g, (_, i) => "<code>" + codeSpans[Number(i)] + "</code>");
+      return out;
+    }
+    function renderInlineRaw(line) {
+      return renderInline(escapeHtml(line));
+    }
+    function isTableDelimiter(line) {
+      const cells = line.split("|").map((c) => c.trim()).filter((c) => c !== "");
+      return cells.length > 0 && cells.every((c) => /^:?-{1,}:?$/.test(c));
+    }
+    function splitRow(line) {
+      let cells = line.split("|").map((c) => c.trim());
+      if (cells.length && cells[0] === "") cells = cells.slice(1);
+      if (cells.length && cells[cells.length - 1] === "") cells = cells.slice(0, -1);
+      return cells;
+    }
+    function isBlockStart(trimmed) {
+      return trimmed.startsWith("```") || /^(#{1,6})\s+/.test(trimmed) || /^(-{3,}|\*{3,}|_{3,})\s*$/.test(trimmed) || trimmed.startsWith(">") || /^[-*+]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed);
+    }
+    function markdownToHtml(text) {
+      const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+      const html = [];
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        if (trimmed.startsWith("```")) {
+          const buf2 = [];
+          i++;
+          while (i < lines.length && !lines[i].trim().startsWith("```")) {
+            buf2.push(lines[i]);
+            i++;
+          }
+          if (i < lines.length) i++;
+          html.push("<pre><code>" + escapeHtml(buf2.join("\n")) + "</code></pre>");
+          continue;
+        }
+        const hm = trimmed.match(/^(#{1,6})\s+(.+)$/);
+        if (hm) {
+          html.push("<h" + hm[1].length + ">" + renderInlineRaw(hm[2].trim()) + "</h" + hm[1].length + ">");
+          i++;
+          continue;
+        }
+        if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(trimmed)) {
+          html.push("<hr>");
+          i++;
+          continue;
+        }
+        if (trimmed.includes("|") && i + 1 < lines.length && isTableDelimiter(lines[i + 1])) {
+          const head = splitRow(line);
+          const body = [];
+          i += 2;
+          while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") {
+            body.push(splitRow(lines[i]));
+            i++;
+          }
+          let t = "<table><thead><tr>" + head.map((c) => "<th>" + renderInlineRaw(c) + "</th>").join("") + "</tr></thead>";
+          if (body.length) {
+            t += "<tbody>" + body.map((row) => "<tr>" + row.map((c) => "<td>" + renderInlineRaw(c) + "</td>").join("") + "</tr>").join("") + "</tbody>";
+          }
+          t += "</table>";
+          html.push(t);
+          continue;
+        }
+        if (trimmed.startsWith(">")) {
+          const buf2 = [];
+          while (i < lines.length && lines[i].trim().startsWith(">")) {
+            buf2.push(lines[i].trim().replace(/^>\s?/, ""));
+            i++;
+          }
+          html.push("<blockquote><p>" + buf2.map((l) => renderInlineRaw(l)).join("<br>") + "</p></blockquote>");
+          continue;
+        }
+        const lm = trimmed.match(/^[-*+]\s+(.+)$/);
+        const olm = trimmed.match(/^\d+[.)]\s+(.+)$/);
+        if (lm || olm) {
+          const ordered = !!olm;
+          const items = [];
+          while (i < lines.length) {
+            const t2 = lines[i].trim();
+            const m2 = ordered ? t2.match(/^\d+[.)]\s+(.+)$/) : t2.match(/^[-*+]\s+(.+)$/);
+            if (!m2) break;
+            items.push(m2[1]);
+            i++;
+          }
+          const tag = ordered ? "ol" : "ul";
+          html.push("<" + tag + ">" + items.map((it) => "<li>" + renderInlineRaw(it) + "</li>").join("") + "</" + tag + ">");
+          continue;
+        }
+        if (trimmed === "") {
+          i++;
+          continue;
+        }
+        const buf = [];
+        while (i < lines.length) {
+          const t3 = lines[i].trim();
+          if (t3 === "") break;
+          if (isBlockStart(t3)) break;
+          if (t3.includes("|") && i + 1 < lines.length && isTableDelimiter(lines[i + 1])) break;
+          buf.push(lines[i]);
+          i++;
+        }
+        html.push("<p>" + buf.map((l) => renderInlineRaw(l.trim())).join("<br>") + "</p>");
+      }
+      return html.join("\n");
+    }
     function aiTextToSafeHtml(text) {
-      const escaped = String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-      return sanitizeAiOutput("<p>" + escaped.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>") + "</p>");
+      if (typeof text !== "string" || text === "") return "";
+      return sanitizeAiOutput(markdownToHtml(text));
     }
     module2.exports = { sanitizeAiOutput, aiTextToSafeHtml };
+  }
+});
+
+// kavron-labs/backend/services/exammate/tutorPrompt.js
+var require_tutorPrompt = __commonJS({
+  "kavron-labs/backend/services/exammate/tutorPrompt.js"(exports2, module2) {
+    function buildTutorPrompt({ country, province, className, board, subject, question }) {
+      return [
+        "You are a school tutor.",
+        "LANGUAGE RULE (highest priority, overrides everything else): Detect the language AND script of the student's question from the question text itself, and answer in exactly that same language and script. For example, if the question is written in Roman Urdu (Urdu words in Latin script), answer in Roman Urdu \u2014 even if the country is Afghanistan, Pakistan, or anywhere else. Never switch to a different language or script because of the country: a Roman Urdu question must never be answered in Dari, in Urdu (Arabic) script, or in English. A question written in Dari gets a Dari answer; a question written in English gets an English answer; a question written in Urdu script gets a Urdu-script answer.",
+        "Country and Region below are ONLY for curriculum context (syllabus, examples, local relevance). They must NEVER decide the answer language.",
+        `Country: ${country}. Region: ${province}. Class: ${className}. Board: ${board}. Subject: ${subject}. Do not provide leaked exam papers. Question: ${question}`
+      ].join(" ");
+    }
+    module2.exports = { buildTutorPrompt };
   }
 });
 
@@ -48603,24 +48748,19 @@ var require_providers = __commonJS({
         clearTimeout(timer);
       }
     }
-    function firstSuccess(promises) {
-      return new Promise((resolve) => {
-        let settled = 0;
-        const total = promises.length;
-        if (total === 0) return resolve(null);
-        promises.forEach((p) => p.then((v) => {
-          if (v) return resolve(v);
-          if (++settled === total) resolve(null);
-        }).catch(() => {
-          if (++settled === total) resolve(null);
-        }));
-      });
-    }
-    async function askWithFallback({ prompt, config, enabled, onAttempt }) {
+    var OVERALL_DEADLINE_MS = 1e4;
+    async function askWithFallback({ prompt, config, enabled, onAttempt, limits, todayCounts, overallDeadlineMs }) {
       const started = Date.now();
-      const BUDGET_MS = 5e4;
+      const deadline = started + (Number.isFinite(overallDeadlineMs) ? overallDeadlineMs : OVERALL_DEADLINE_MS);
+      const remainingMs = () => deadline - Date.now();
       const geminiModel = process.env.GEMINI_MODEL || "gemini-3.8-flash";
       const isEnabled = (id) => !enabled || enabled[id] !== false;
+      const underLimit = (id) => {
+        if (!limits) return true;
+        const lim = limits[id];
+        if (lim === null || lim === void 0) return true;
+        return (todayCounts ? todayCounts[id] || 0 : 0) < lim;
+      };
       const report = (provider, r) => {
         if (!onAttempt) return;
         try {
@@ -48635,25 +48775,32 @@ var require_providers = __commonJS({
         report(provider, { text: null, status: "error" });
         return null;
       });
-      const freeAttempts = [];
-      if (config.geminiKey && isEnabled("gemini")) {
-        freeAttempts.push(wrap("gemini", callGemini({ key: config.geminiKey, model: geminiModel, prompt, timeoutMs: 25e3 })));
+      const attempts = [];
+      if (config.geminiKey) {
+        attempts.push({ id: "gemini", timeoutMs: 25e3, call: (t) => callGemini({ key: config.geminiKey, model: geminiModel, prompt, timeoutMs: t }) });
       }
-      if (config.groqKey && isEnabled("groq")) freeAttempts.push(wrap("groq", callChatCompletions({ baseUrl: "https://api.groq.com/openai/v1", key: config.groqKey, model: config.groqModel, prompt, timeoutMs: 15e3 })));
-      if (config.openrouterKey && isEnabled("openrouter")) freeAttempts.push(wrap("openrouter", callChatCompletions({ baseUrl: "https://openrouter.ai/api/v1", key: config.openrouterKey, model: config.openrouterModel, prompt, timeoutMs: 15e3 })));
-      if (config.mistralKey && isEnabled("mistral")) freeAttempts.push(wrap("mistral", callChatCompletions({ baseUrl: "https://api.mistral.ai/v1", key: config.mistralKey, model: config.mistralModel, prompt, timeoutMs: 15e3 })));
-      if (freeAttempts.length) {
-        const winner = await firstSuccess(freeAttempts);
+      if (config.groqKey) attempts.push({ id: "groq", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.groq.com/openai/v1", key: config.groqKey, model: config.groqModel, prompt, timeoutMs: t }) });
+      if (config.openrouterKey) attempts.push({ id: "openrouter", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://openrouter.ai/api/v1", key: config.openrouterKey, model: config.openrouterModel, prompt, timeoutMs: t }) });
+      if (config.mistralKey) attempts.push({ id: "mistral", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.mistral.ai/v1", key: config.mistralKey, model: config.mistralModel, prompt, timeoutMs: t }) });
+      if (config.cohereKey) attempts.push({ id: "cohere", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.cohere.ai/compatibility/v1", key: config.cohereKey, model: config.cohereModel, prompt, timeoutMs: t }) });
+      for (const att of attempts) {
+        if (!isEnabled(att.id) || !underLimit(att.id)) continue;
+        const remaining = remainingMs();
+        if (remaining <= 0) return null;
+        const winner = await wrap(att.id, att.call(Math.min(att.timeoutMs, remaining)));
         if (winner) return winner;
       }
-      if (config.museKey && isEnabled("muse") && Date.now() - started <= BUDGET_MS) {
-        const r = await callChatCompletions({ baseUrl: "https://api.meta.ai/v1", key: config.museKey, model: config.museModel, prompt, timeoutMs: 1e4 });
-        report("muse", r);
-        if (r.text) return { provider: "muse", text: r.text };
+      if (config.museKey && isEnabled("muse")) {
+        const remaining = remainingMs();
+        if (remaining > 0) {
+          const r = await callChatCompletions({ baseUrl: "https://api.meta.ai/v1", key: config.museKey, model: config.museModel, prompt, timeoutMs: Math.min(1e4, remaining) });
+          report("muse", r);
+          if (r.text) return { provider: "muse", text: r.text };
+        }
       }
       return null;
     }
-    module2.exports = { askWithFallback, callChatCompletions, callGemini };
+    module2.exports = { askWithFallback, callChatCompletions, callGemini, OVERALL_DEADLINE_MS };
   }
 });
 
@@ -48667,6 +48814,7 @@ CREATE TABLE IF NOT EXISTS provider_config (
   encrypted_key TEXT,
   key_hint TEXT,
   enabled INTEGER NOT NULL DEFAULT 1,
+  custom_limit INTEGER,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS provider_events (
@@ -48709,6 +48857,10 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(is_read, cr
           if (!historyCols.has("provider")) await c.execute("ALTER TABLE exammate_history ADD COLUMN provider TEXT");
           await c.execute("CREATE INDEX IF NOT EXISTS idx_history_provider_date ON exammate_history(provider, created_at)");
           await c.execute(`UPDATE exammate_history SET provider = 'gemini' WHERE provider IS NULL`);
+        }
+        if (await tableExists("provider_config")) {
+          const configCols = await columnsOf("provider_config");
+          if (!configCols.has("custom_limit")) await c.execute("ALTER TABLE provider_config ADD COLUMN custom_limit INTEGER");
         }
         if (await tableExists("ai_usage")) {
           const usageCols = await columnsOf("ai_usage");
@@ -48763,7 +48915,7 @@ var require_keyResolver = __commonJS({
     var config = require_env();
     var { getClient } = require_client4();
     var { decryptKey } = require_keyCrypto();
-    var ENV_KEYS = { gemini: "geminiKey", groq: "groqKey", openrouter: "openrouterKey", mistral: "mistralKey", muse: "museKey" };
+    var ENV_KEYS = { gemini: "geminiKey", groq: "groqKey", openrouter: "openrouterKey", mistral: "mistralKey", cohere: "cohereKey", muse: "museKey" };
     async function resolveProviderKeys() {
       const keys = {};
       const enabled = {};
@@ -48804,7 +48956,7 @@ var require_registry = __commonJS({
       { id: "mistral", name: "Mistral", wired: true, envKey: "MISTRAL_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "~1B tokens/month org-wide, phone verification" },
       { id: "cloudflare", name: "Cloudflare Workers AI", wired: false, envKey: "CLOUDFLARE_API_TOKEN", dailyLimit: null, limitPeriod: null, limitNote: "10,000 neurons/day, custom API shape", keyFields: [{ name: "token", label: "API Token" }, { name: "accountId", label: "Account ID" }] },
       { id: "nvidia", name: "NVIDIA API catalog", wired: false, envKey: "NVIDIA_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "Free prototyping, trial terms" },
-      { id: "cohere", name: "Cohere", wired: false, envKey: "COHERE_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "1,000 calls/month trial, eval only" },
+      { id: "cohere", name: "Cohere", wired: true, envKey: "COHERE_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "1,000 calls/month trial, eval only" },
       { id: "sambanova", name: "SambaNova", wired: false, envKey: "SAMBANOVA_API_KEY", dailyLimit: 20, limitPeriod: "day", limitNote: "Free tier disputed \u2014 try, skip if card asked" },
       { id: "huggingface", name: "Hugging Face", wired: false, envKey: "HF_TOKEN", dailyLimit: null, limitPeriod: null, limitNote: "$0.10/month credit, test-level" },
       { id: "pollinations", name: "Pollinations", wired: false, envKey: null, dailyLimit: null, limitPeriod: null, limitNote: "Keyless free API, variable reliability" },
@@ -48902,6 +49054,64 @@ var require_providerEvents = __commonJS({
   }
 });
 
+// kavron-labs/backend/services/admin/providerLimits.js
+var require_providerLimits = __commonJS({
+  "kavron-labs/backend/services/admin/providerLimits.js"(exports2, module2) {
+    var { PROVIDERS, getProvider } = require_registry();
+    function effectiveLimitFor(entry, customLimit) {
+      if (customLimit !== null && customLimit !== void 0) return customLimit;
+      if (entry && entry.dailyLimit !== null && entry.dailyLimit !== void 0) return entry.dailyLimit;
+      return null;
+    }
+    function parseCustomLimit(value) {
+      if (value === null || value === void 0 || value === "") return { ok: true, limit: null };
+      if (typeof value !== "number" || !Number.isInteger(value)) {
+        return { ok: false, error: "Daily limit must be a whole number of questions per day, or empty to clear it." };
+      }
+      if (value < 0 || value > 1e6) {
+        return { ok: false, error: "Daily limit must be between 0 and 1000000 questions per day." };
+      }
+      return { ok: true, limit: value };
+    }
+    function shouldNotifyLimitHit(todayCount, effectiveLimit) {
+      return effectiveLimit !== null && effectiveLimit !== void 0 && effectiveLimit > 0 && todayCount === effectiveLimit;
+    }
+    async function getProviderStates(c) {
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const cfg = await c.execute("SELECT provider, enabled, custom_limit FROM provider_config");
+      const cfgById = {};
+      for (const row of cfg.rows) cfgById[row.provider] = row;
+      const todayRows = await c.execute({ sql: "SELECT provider, COUNT(*) AS n FROM exammate_history WHERE substr(created_at,1,10) = ? GROUP BY provider", args: [today] });
+      const todayById = {};
+      for (const row of todayRows.rows) todayById[row.provider] = Number(row.n);
+      const states = {};
+      for (const p of PROVIDERS) {
+        const row = cfgById[p.id];
+        const enabled = row ? !!row.enabled : true;
+        const rawCustom = row ? row.custom_limit : null;
+        const customLimit = rawCustom === null || rawCustom === void 0 || Number.isNaN(Number(rawCustom)) ? null : Number(rawCustom);
+        const effectiveLimit = effectiveLimitFor(p, customLimit);
+        const todayCount = todayById[p.id] || 0;
+        const autoOff = enabled && effectiveLimit !== null && todayCount >= effectiveLimit;
+        const status = !enabled ? "Off" : autoOff ? "Auto-off (limit reached)" : "Active";
+        states[p.id] = { enabled, customLimit, effectiveLimit, today: todayCount, autoOff, status };
+      }
+      return states;
+    }
+    function findNextProvider(states, keys, excludeId) {
+      for (const p of PROVIDERS) {
+        if (!p.wired || p.id === "muse" || p.id === excludeId) continue;
+        const s = states[p.id];
+        if (!s || !s.enabled || s.autoOff) continue;
+        if (!keys || !keys[p.id]) continue;
+        return p;
+      }
+      return null;
+    }
+    module2.exports = { effectiveLimitFor, parseCustomLimit, shouldNotifyLimitHit, getProviderStates, findNextProvider };
+  }
+});
+
 // kavron-labs/backend/routes/exammate.js
 var require_exammate = __commonJS({
   "kavron-labs/backend/routes/exammate.js"(exports2, module2) {
@@ -48914,12 +49124,14 @@ var require_exammate = __commonJS({
     var { dbRateLimit } = require_rateLimit();
     var { cleanText, EXAMMATE_MAX_QUESTION, EXAMMATE_MAX_SUBJECT } = require_validators();
     var { aiTextToSafeHtml } = require_sanitize();
+    var { buildTutorPrompt } = require_tutorPrompt();
     var { askWithFallback } = require_providers();
     var { ensurePanelSchema } = require_panelSchema();
     var { resolveProviderKeys } = require_keyResolver();
     var { recordAttempt, shouldWarn80 } = require_providerEvents();
     var { createNotification } = require_notifications();
     var { getProvider } = require_registry();
+    var { getProviderStates, findNextProvider, shouldNotifyLimitHit } = require_providerLimits();
     async function dailyUsage(userId) {
       const c = getClient();
       const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -48939,8 +49151,24 @@ var require_exammate = __commonJS({
         const country = cleanText(req.body && req.body.country);
         const province = cleanText(req.body && req.body.province);
         const className = cleanText(req.body && req.body.className);
+        const board = cleanText(req.body && req.body.board);
         if (!question || question.length > EXAMMATE_MAX_QUESTION) {
           return res.status(400).json({ error: `Question must be 1 to ${EXAMMATE_MAX_QUESTION} characters.` });
+        }
+        if (!country) {
+          return res.status(400).json({ error: "Please select your Country first." });
+        }
+        if (!province) {
+          return res.status(400).json({ error: "Please select your Province/State." });
+        }
+        if (!className) {
+          return res.status(400).json({ error: "Please select your Class." });
+        }
+        if (!board) {
+          return res.status(400).json({ error: "Please select your Board." });
+        }
+        if (!subject) {
+          return res.status(400).json({ error: "Please select your Subject." });
         }
         if (subject.length > EXAMMATE_MAX_SUBJECT) return res.status(400).json({ error: "Subject is too long." });
         if (await dailyUsage(req.user.userId) >= config.exammateDailyCap) {
@@ -48951,26 +49179,42 @@ var require_exammate = __commonJS({
         }
         await ensurePanelSchema();
         const { keys: resolvedKeys, enabled } = await resolveProviderKeys();
-        if (!resolvedKeys.gemini && !resolvedKeys.groq && !resolvedKeys.openrouter && !resolvedKeys.mistral && !resolvedKeys.muse) {
+        const states = await getProviderStates(getClient());
+        const limits = {};
+        const todayCounts = {};
+        for (const id of Object.keys(states)) {
+          limits[id] = states[id].effectiveLimit;
+          todayCounts[id] = states[id].today;
+        }
+        if (!resolvedKeys.gemini && !resolvedKeys.groq && !resolvedKeys.openrouter && !resolvedKeys.mistral && !resolvedKeys.cohere && !resolvedKeys.muse) {
           return res.status(503).json({ error: "AI service is not configured yet. Please try again later." });
         }
-        const prompt = `You are a school tutor. Country: ${country}. Region: ${province}. Class: ${className}. Subject: ${subject}. Answer the student's question in the same language as the question. Do not provide leaked exam papers. Question: ${question}`;
+        const prompt = buildTutorPrompt({ country, province, className, board, subject, question });
         const onAttempt = (att) => {
           recordAttempt(getClient(), att).catch((e) => console.error("provider event record failed:", e.message));
         };
         const result = await askWithFallback({
           prompt,
-          config: { ...config, geminiKey: resolvedKeys.gemini, groqKey: resolvedKeys.groq, openrouterKey: resolvedKeys.openrouter, mistralKey: resolvedKeys.mistral, museKey: resolvedKeys.muse },
+          config: { ...config, geminiKey: resolvedKeys.gemini, groqKey: resolvedKeys.groq, openrouterKey: resolvedKeys.openrouter, mistralKey: resolvedKeys.mistral, cohereKey: resolvedKeys.cohere, museKey: resolvedKeys.muse },
           enabled,
-          onAttempt
+          onAttempt,
+          limits,
+          todayCounts
         });
         if (!result) {
+          const anyFreeEligible = ["gemini", "groq", "openrouter", "mistral", "cohere"].some((id) => {
+            const entry = getProvider(id);
+            const s = states[id];
+            return entry && entry.wired && s && s.enabled && resolvedKeys[id] && !s.autoOff;
+          });
+          const museAttemptable = !!(resolvedKeys.muse && enabled.muse !== false);
+          const nothingAttempted = !anyFreeEligible && !museAttemptable;
           try {
             await createNotification(getClient(), {
               type: "all_failed",
               severity: "critical",
               title: "ExamMate ne jawab nahi diya",
-              message: "Koi provider jawab nahi de saka. Sab providers ki keys aur haalat panel me check karo.",
+              message: nothingAttempted ? "Sab providers band hain ya unki daily limit poori ho gayi hai. Panel me kisi provider ko ON karo ya uski limit barhao." : "Koi provider jawab nahi de saka. Sab providers ki keys aur haalat panel me check karo.",
               provider: null,
               action: null
             });
@@ -48987,15 +49231,29 @@ var require_exammate = __commonJS({
         await c.execute({ sql: "INSERT INTO ai_usage (user_id, tokens_used, provider) VALUES (?,?,?)", args: [req.user.userId, Math.ceil(raw.length / 4), result.provider] });
         try {
           const entry = getProvider(result.provider);
-          if (entry && entry.dailyLimit) {
+          const st = states[result.provider];
+          const eff = st ? st.effectiveLimit : entry ? entry.dailyLimit : null;
+          if (entry && eff !== null && eff !== void 0) {
             const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
             const cnt = await c.execute({ sql: "SELECT COUNT(*) AS n FROM exammate_history WHERE provider = ? AND substr(created_at,1,10) = ?", args: [result.provider, today] });
-            if (shouldWarn80(Number(cnt.rows[0].n), entry.dailyLimit)) {
+            const n = Number(cnt.rows[0].n);
+            if (shouldWarn80(n, eff)) {
               await createNotification(c, {
                 type: "usage_warning",
                 severity: "warning",
                 title: `${entry.name} ki limit 80% poori`,
-                message: `${entry.name} ki aaj ki limit 80% poori ho gayi hai (${cnt.rows[0].n}/${entry.dailyLimit}). Nayi key tayyar rakho.`,
+                message: `${entry.name} ki aaj ki limit 80% poori ho gayi hai (${n}/${eff}). Nayi key tayyar rakho.`,
+                provider: result.provider,
+                action: result.provider
+              });
+            }
+            if (shouldNotifyLimitHit(n, eff)) {
+              const next2 = findNextProvider(states, resolvedKeys, result.provider);
+              await createNotification(c, {
+                type: "provider_limit",
+                severity: "warning",
+                title: `${entry.name} ki daily limit poori`,
+                message: `${entry.name} ki aaj ki limit poori ho gayi hai (${n}/${eff}). Agla provider: ${next2 ? next2.name + " jawab dega" : "koi nahi bacha \u2014 sab band ya limit par hain"}.`,
                 provider: result.provider,
                 action: result.provider
               });
@@ -49035,6 +49293,7 @@ var require_admin = __commonJS({
     var { PROVIDERS, getProvider } = require_registry();
     var { encryptKey, keyHint } = require_keyCrypto();
     var { listNotifications, markRead, markAllRead } = require_notifications();
+    var { effectiveLimitFor, parseCustomLimit } = require_providerLimits();
     router.use(async (req, res, next) => {
       try {
         await ensurePanelSchema();
@@ -49077,7 +49336,7 @@ var require_admin = __commonJS({
         const c = getClient();
         const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
         const month = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
-        const cfg = await c.execute("SELECT provider, encrypted_key, key_hint, enabled FROM provider_config");
+        const cfg = await c.execute("SELECT provider, encrypted_key, key_hint, enabled, custom_limit FROM provider_config");
         const cfgById = {};
         for (const row of cfg.rows) cfgById[row.provider] = row;
         const todayRows = await c.execute({ sql: "SELECT provider, COUNT(*) AS n FROM exammate_history WHERE substr(created_at,1,10) = ? GROUP BY provider", args: [today] });
@@ -49089,6 +49348,13 @@ var require_admin = __commonJS({
         const providers = PROVIDERS.map((p) => {
           const row = cfgById[p.id];
           const hasPanelKey = !!(row && row.encrypted_key);
+          const enabled = row ? !!row.enabled : true;
+          const rawCustom = row ? row.custom_limit : null;
+          const customLimit = rawCustom === null || rawCustom === void 0 || Number.isNaN(Number(rawCustom)) ? null : Number(rawCustom);
+          const effectiveLimit = effectiveLimitFor(p, customLimit);
+          const todayCount = todayById[p.id] || 0;
+          const autoOff = enabled && effectiveLimit !== null && todayCount >= effectiveLimit;
+          const status = !enabled ? "Off" : autoOff ? "Auto-off (limit reached)" : "Active";
           return {
             id: p.id,
             name: p.name,
@@ -49099,9 +49365,13 @@ var require_admin = __commonJS({
             keyFields: p.keyFields || [{ name: "key", label: "API Key" }],
             keySource: hasPanelKey ? "panel" : envHasKey(p) ? "env" : "none",
             keyHint: hasPanelKey ? row.key_hint : null,
-            enabled: row ? !!row.enabled : true,
-            today: todayById[p.id] || 0,
-            monthTokens: monthById[p.id] || 0
+            enabled,
+            today: todayCount,
+            monthTokens: monthById[p.id] || 0,
+            custom_limit: customLimit,
+            effective_limit: effectiveLimit,
+            autoOff,
+            status
           };
         });
         res.json({ providers });
@@ -49166,6 +49436,24 @@ var require_admin = __commonJS({
         });
         await audit(c, req.user.userId, "provider_toggled", `${entry.id} -> ${req.body.enabled ? "on" : "off"}`);
         res.json({ ok: true, enabled: req.body.enabled });
+      } catch (e) {
+        next(e);
+      }
+    });
+    router.post("/providers/:id/limit", requireAuth, requireRole("admin"), csrfProtect, async (req, res, next) => {
+      try {
+        const entry = getProvider(req.params.id);
+        if (!entry) return res.status(404).json({ error: "Unknown provider." });
+        const parsed = parseCustomLimit(req.body ? req.body.limit : void 0);
+        if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+        const c = getClient();
+        await c.execute({
+          sql: `INSERT INTO provider_config (provider, encrypted_key, key_hint, enabled, custom_limit, updated_at) VALUES (?, NULL, NULL, 1, ?, datetime('now'))
+        ON CONFLICT(provider) DO UPDATE SET custom_limit = excluded.custom_limit, updated_at = datetime('now')`,
+          args: [entry.id, parsed.limit]
+        });
+        await audit(c, req.user.userId, "provider_limit_set", `${entry.id} -> ${parsed.limit === null ? "cleared" : parsed.limit}`);
+        res.json({ ok: true, custom_limit: parsed.limit, effective_limit: effectiveLimitFor(entry, parsed.limit) });
       } catch (e) {
         next(e);
       }
