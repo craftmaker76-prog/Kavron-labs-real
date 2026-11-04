@@ -23884,7 +23884,7 @@ var require_env = __commonJS({
       museKey: (process.env.MODEL_API_KEY || "").trim(),
       groqModel: (process.env.GROQ_MODEL || "openai/gpt-oss-20b").trim(),
       openrouterModel: (process.env.OPENROUTER_MODEL || "openrouter/free").trim(),
-      mistralModel: (process.env.MISTRAL_MODEL || "mistral-small-latest").trim(),
+      mistralModel: (process.env.MISTRAL_MODEL || "ministral-8b-latest").trim(),
       cohereModel: (process.env.COHERE_MODEL || "command-a-plus-05-2026").trim(),
       iteracomputeModel: (process.env.ITERACOMPUTE_MODEL || "qwen/qwen3.8-27b").trim(),
       museModel: (process.env.MUSE_MODEL || "muse-wonder-1.0").trim(),
@@ -48753,7 +48753,7 @@ var require_providers = __commonJS({
         clearTimeout(timer);
       }
     }
-    var OVERALL_DEADLINE_MS = 1e4;
+    var OVERALL_DEADLINE_MS = 17e3;
     async function askWithFallback({ prompt, config, enabled, onAttempt, limits, todayCounts, overallDeadlineMs }) {
       const started = Date.now();
       const deadline = started + (Number.isFinite(overallDeadlineMs) ? overallDeadlineMs : OVERALL_DEADLINE_MS);
@@ -48788,7 +48788,7 @@ var require_providers = __commonJS({
       if (config.openrouterKey) attempts.push({ id: "openrouter", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://openrouter.ai/api/v1", key: config.openrouterKey, model: config.openrouterModel, prompt, timeoutMs: t }) });
       if (config.mistralKey) attempts.push({ id: "mistral", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.mistral.ai/v1", key: config.mistralKey, model: config.mistralModel, prompt, timeoutMs: t }) });
       if (config.cohereKey) attempts.push({ id: "cohere", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.cohere.ai/compatibility/v1", key: config.cohereKey, model: config.cohereModel, prompt, timeoutMs: t }) });
-      if (config.iteracomputeKey) attempts.push({ id: "iteracompute", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.iteracompute.com/v1", key: config.iteracomputeKey, model: config.iteracomputeModel, prompt, timeoutMs: t, extraBody: { reasoning: false } }) });
+      if (config.iteracomputeKey) attempts.push({ id: "iteracompute", timeoutMs: 2e4, call: (t) => callChatCompletions({ baseUrl: "https://api.iteracompute.com/v1", key: config.iteracomputeKey, model: config.iteracomputeModel, prompt, timeoutMs: t, extraBody: { reasoning: false } }) });
       for (const att of attempts) {
         if (!isEnabled(att.id) || !underLimit(att.id)) continue;
         const remaining = remainingMs();
@@ -49202,7 +49202,7 @@ var require_exammate = __commonJS({
           limits[id] = states[id].effectiveLimit;
           todayCounts[id] = states[id].today;
         }
-        if (!resolvedKeys.gemini && !resolvedKeys.groq && !resolvedKeys.openrouter && !resolvedKeys.mistral && !resolvedKeys.cohere && !resolvedKeys.muse) {
+        if (!resolvedKeys.gemini && !resolvedKeys.groq && !resolvedKeys.openrouter && !resolvedKeys.mistral && !resolvedKeys.cohere && !resolvedKeys.iteracompute && !resolvedKeys.muse) {
           return res.status(503).json({ error: "AI service is not configured yet. Please try again later." });
         }
         const prompt = buildTutorPrompt({ country, province, className, board, subject, question });
@@ -49218,7 +49218,7 @@ var require_exammate = __commonJS({
           todayCounts
         });
         if (!result) {
-          const anyFreeEligible = ["gemini", "groq", "openrouter", "mistral", "cohere"].some((id) => {
+          const anyFreeEligible = ["gemini", "groq", "openrouter", "mistral", "cohere", "iteracompute"].some((id) => {
             const entry = getProvider(id);
             const s = states[id];
             return entry && entry.wired && s && s.enabled && resolvedKeys[id] && !s.autoOff;
