@@ -23878,6 +23878,7 @@ var require_env = __commonJS({
       openrouterKey: (process.env.OPENROUTER_API_KEY || "").trim(),
       mistralKey: (process.env.MISTRAL_API_KEY || "").trim(),
       cohereKey: (process.env.COHERE_API_KEY || "").trim(),
+      iteracomputeKey: (process.env.ITERACOMPUTE_API_KEY || "").trim(),
       // Meta Model API key (dev.meta.ai, starts LLM_). A Muse APP account's
       // tokens cannot power this — only a Model API key can.
       museKey: (process.env.MODEL_API_KEY || "").trim(),
@@ -23885,6 +23886,7 @@ var require_env = __commonJS({
       openrouterModel: (process.env.OPENROUTER_MODEL || "openrouter/free").trim(),
       mistralModel: (process.env.MISTRAL_MODEL || "mistral-small-latest").trim(),
       cohereModel: (process.env.COHERE_MODEL || "command-a-plus-05-2026").trim(),
+      iteracomputeModel: (process.env.ITERACOMPUTE_MODEL || "qwen/qwen3.8-27b").trim(),
       museModel: (process.env.MUSE_MODEL || "muse-wonder-1.0").trim(),
       exammateDailyCap: num(process.env.EXAMMATE_DAILY_CAP_PER_USER, 20),
       exammateMonthlyTokenCap: num(process.env.EXAMMATE_MONTHLY_TOKEN_CAP, 1e6),
@@ -48688,7 +48690,7 @@ var require_tutorPrompt = __commonJS({
 // kavron-labs/backend/services/exammate/providers.js
 var require_providers = __commonJS({
   "kavron-labs/backend/services/exammate/providers.js"(exports2, module2) {
-    async function callChatCompletions({ baseUrl, key, model, prompt, timeoutMs }) {
+    async function callChatCompletions({ baseUrl, key, model, prompt, timeoutMs, extraBody }) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), timeoutMs);
       try {
@@ -48699,7 +48701,8 @@ var require_providers = __commonJS({
           body: JSON.stringify({
             model,
             messages: [{ role: "user", content: prompt }],
-            temperature: 0.7
+            temperature: 0.7,
+            ...extraBody || {}
           })
         });
         if (!resp.ok) {
@@ -48783,6 +48786,7 @@ var require_providers = __commonJS({
       if (config.openrouterKey) attempts.push({ id: "openrouter", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://openrouter.ai/api/v1", key: config.openrouterKey, model: config.openrouterModel, prompt, timeoutMs: t }) });
       if (config.mistralKey) attempts.push({ id: "mistral", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.mistral.ai/v1", key: config.mistralKey, model: config.mistralModel, prompt, timeoutMs: t }) });
       if (config.cohereKey) attempts.push({ id: "cohere", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.cohere.ai/compatibility/v1", key: config.cohereKey, model: config.cohereModel, prompt, timeoutMs: t }) });
+      if (config.iteracomputeKey) attempts.push({ id: "iteracompute", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.iteracompute.com/v1", key: config.iteracomputeKey, model: config.iteracomputeModel, prompt, timeoutMs: t, extraBody: { reasoning: false } }) });
       for (const att of attempts) {
         if (!isEnabled(att.id) || !underLimit(att.id)) continue;
         const remaining = remainingMs();
@@ -48915,7 +48919,7 @@ var require_keyResolver = __commonJS({
     var config = require_env();
     var { getClient } = require_client4();
     var { decryptKey } = require_keyCrypto();
-    var ENV_KEYS = { gemini: "geminiKey", groq: "groqKey", openrouter: "openrouterKey", mistral: "mistralKey", cohere: "cohereKey", muse: "museKey" };
+    var ENV_KEYS = { gemini: "geminiKey", groq: "groqKey", openrouter: "openrouterKey", mistral: "mistralKey", cohere: "cohereKey", iteracompute: "iteracomputeKey", muse: "museKey" };
     async function resolveProviderKeys() {
       const keys = {};
       const enabled = {};
@@ -48957,6 +48961,7 @@ var require_registry = __commonJS({
       { id: "cloudflare", name: "Cloudflare Workers AI", wired: false, envKey: "CLOUDFLARE_API_TOKEN", dailyLimit: null, limitPeriod: null, limitNote: "10,000 neurons/day, custom API shape", keyFields: [{ name: "token", label: "API Token" }, { name: "accountId", label: "Account ID" }] },
       { id: "nvidia", name: "NVIDIA API catalog", wired: false, envKey: "NVIDIA_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "Free prototyping, trial terms" },
       { id: "cohere", name: "Cohere", wired: true, envKey: "COHERE_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "1,000 calls/month trial, eval only" },
+      { id: "iteracompute", name: "IteraCompute Qwen", wired: true, envKey: "ITERACOMPUTE_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "Qwen3.8-27B free, 30M tokens/month, no card \u2014 promo ends 24 Nov 2026" },
       { id: "sambanova", name: "SambaNova", wired: false, envKey: "SAMBANOVA_API_KEY", dailyLimit: 20, limitPeriod: "day", limitNote: "Free tier disputed \u2014 try, skip if card asked" },
       { id: "huggingface", name: "Hugging Face", wired: false, envKey: "HF_TOKEN", dailyLimit: null, limitPeriod: null, limitNote: "$0.10/month credit, test-level" },
       { id: "pollinations", name: "Pollinations", wired: false, envKey: null, dailyLimit: null, limitPeriod: null, limitNote: "Keyless free API, variable reliability" },
@@ -49195,7 +49200,7 @@ var require_exammate = __commonJS({
         };
         const result = await askWithFallback({
           prompt,
-          config: { ...config, geminiKey: resolvedKeys.gemini, groqKey: resolvedKeys.groq, openrouterKey: resolvedKeys.openrouter, mistralKey: resolvedKeys.mistral, cohereKey: resolvedKeys.cohere, museKey: resolvedKeys.muse },
+          config: { ...config, geminiKey: resolvedKeys.gemini, groqKey: resolvedKeys.groq, openrouterKey: resolvedKeys.openrouter, mistralKey: resolvedKeys.mistral, cohereKey: resolvedKeys.cohere, iteracomputeKey: resolvedKeys.iteracompute, museKey: resolvedKeys.muse },
           enabled,
           onAttempt,
           limits,
