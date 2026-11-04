@@ -25,3 +25,7 @@ button:hover{border-color:#94a3b8}
 .foot{padding:28px 16px 40px;color:#64748b;font-size:14px}
 @media(max-width:640px){.hero h1{font-size:30px}.grid,.form-grid{grid-template-columns:1fr}}
 [hidden]{display:none!important}
+/* Tool-card logos + Free badge */
+.tool-logo{width:64px;height:64px;border-radius:14px;display:block;margin-bottom:12px}
+.free{display:inline-block;background:#dcfce7;color:#166534;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:600;margin-right:8px}
+
