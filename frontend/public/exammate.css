@@ -28,3 +28,9 @@ button:disabled{opacity:.55;cursor:wait}
 .msg.ai .body pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow-x:auto}
 .msg.ai .body pre code{background:none;padding:0;color:inherit}
 .msg.ai .body a{color:#4f46e5}
+/* Step-gate status errors (2026-11-04): a missing step / blocked ask shows as an
+   important error — red, semibold. Loading text keeps normal styling (the JS
+   removes the .error class for it). APPEND this block to the END of the repo's
+   frontend/public/exammate.css — do NOT replace that file, or the Line 1
+   markdown rules would be lost. */
+#status.error{color:#DC2626;font-weight:600}
