@@ -132,3 +132,54 @@ $('askBtn').addEventListener('click', ask);
 toggleProvince();
 updateGates();
 checkLogin();
+
+// History (2026-11-04): past questions, newest first. No exammate.html
+// change: the section is created with DOM calls only (like the Board
+// field), inside #toolUI, so it is login-gated like the rest of the tool.
+// Answers use server-sanitized answerHtml, exactly like live answers.
+(function addHistorySection(){
+  const toolUI = $('toolUI');
+  if(!toolUI) return;
+  const wrap = document.createElement('div');
+  wrap.id = 'historyWrap';
+  const btn = document.createElement('button');
+  btn.id = 'historyBtn';
+  btn.textContent = 'Show history';
+  const list = document.createElement('div');
+  list.id = 'historyList';
+  list.className = 'chat';
+  wrap.appendChild(btn);
+  wrap.appendChild(list);
+  toolUI.appendChild(wrap);
+  btn.addEventListener('click', loadHistory);
+})();
+async function loadHistory(){
+  const list = $('historyList');
+  const btn = $('historyBtn');
+  if(!list || !btn) return;
+  btn.disabled = true;
+  list.textContent = 'Loading history…';
+  try{
+    const r = await fetch('/api/exammate/history', {credentials:'include'});
+    const j = await r.json();
+    if(!r.ok){ list.textContent = j.error || 'Could not load history.'; btn.disabled = false; return; }
+    list.textContent = '';
+    if(!j.history || !j.history.length){ list.textContent = 'No past questions yet.'; btn.disabled = false; return; }
+    j.history.forEach(function(h){
+      const div = document.createElement('div'); div.className = 'msg ai';
+      const meta = document.createElement('div'); meta.className = 'meta';
+      meta.textContent = (h.subject || '') + ' · ' + (h.class_name || '') + ' · ' + (h.created_at || '');
+      const q = document.createElement('div'); q.className = 'body';
+      q.textContent = 'Q: ' + (h.question || '');
+      const a = document.createElement('div'); a.className = 'body';
+      if(h.answerHtml) a.innerHTML = h.answerHtml; else a.textContent = h.answer || '';
+      div.appendChild(meta); div.appendChild(q); div.appendChild(a);
+      list.appendChild(div);
+    });
+    btn.textContent = 'Reload history';
+    btn.disabled = false;
+  }catch(e){
+    list.textContent = 'Network error. Please check your connection and try again.';
+    btn.disabled = false;
+  }
+}
