@@ -1,0 +1,14 @@
+/* ExamMate chat readability (2026-11-05) — APPEND this block to the END of
+   the repo's frontend/public/exammate.css (do NOT replace that file).
+   Fixes: (1) AI answers were pale text on a white bubble — unreadable;
+   (2) font was not a normal computer font. This forces a normal system font
+   (ChatGPT-style) and solid dark text on both message kinds. Later rules
+   win at equal specificity, and these selectors are more specific than the
+   base .msg rules, so appending at the end is enough. */
+body, .chat, .msg, .composer input, .composer textarea, .composer button {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+.chat .msg.ai .body { color: #0f172a; }
+.chat .msg.ai .meta { color: #64748b; }
+.chat .msg.user .body { color: #1e293b; }
+.chat .msg.user .meta { color: #64748b; }
