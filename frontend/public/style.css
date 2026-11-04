@@ -1,31 +1,43 @@
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;line-height:1.5}
-a{color:#4f46e5;text-decoration:none}a:hover{text-decoration:underline}
-.wrap{max-width:960px;margin:0 auto;padding:0 16px}
-.topbar{background:#0f172a;color:#fff}.topbar-in{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:10px;color:#fff}.brand:hover{text-decoration:none}
-.mark{display:inline-flex;width:36px;height:36px;border-radius:9px;background:#4f46e5;color:#fff;font-weight:700;font-size:20px;align-items:center;justify-content:center}
-.brand-name{font-weight:700;font-size:20px;letter-spacing:.2px}
-.nav{display:flex;gap:18px}.nav a{color:#c7d2fe}.nav a:hover{color:#fff}
-.hero{padding:48px 0 24px}.hero h1{font-size:40px;line-height:1.15;margin:0 0 12px}.lede{font-size:18px;color:#475569;max-width:640px;margin:0 0 20px}
-.cta-row{display:flex;gap:12px;flex-wrap:wrap}
-.btn{display:inline-block;padding:11px 20px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:#0f172a;font-weight:600;cursor:pointer}
-.btn.primary{background:#4f46e5;border-color:#4f46e5;color:#fff}.btn:hover{text-decoration:none;opacity:.92}
-h2{font-size:24px;margin:32px 0 14px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px}.card h3{margin:0 0 6px}.card p{color:#475569;margin:0 0 12px}
-.badge{display:inline-block;background:#fef3c7;color:#92400e;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:600}
-.card.live{border-color:#c7d2fe}
-.panel{background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-top:8px}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.form-grid h3{margin:0 0 8px}
-input,textarea{width:100%;padding:10px;margin:6px 0;border:1px solid #cbd5e1;border-radius:8px;font:inherit}
-button{padding:11px 20px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;font:inherit;font-weight:600;cursor:pointer}
-button:hover{border-color:#94a3b8}
-#me,#regMsg{color:#475569;word-break:break-word}
-#answer{margin-top:14px}
-.foot{padding:28px 16px 40px;color:#64748b;font-size:14px}
-@media(max-width:640px){.hero h1{font-size:30px}.grid,.form-grid{grid-template-columns:1fr}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#070b1a;color:#f1f5f9;line-height:1.6}
+a{color:#a5b4fc;text-decoration:none}a:hover{text-decoration:underline}
+.wrap{max-width:1024px;margin:0 auto;padding:0 20px}
+.topbar{background:rgba(7,11,26,.9);border-bottom:1px solid rgba(129,140,248,.18);position:sticky;top:0}
+.topbar-in{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 20px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;color:#fff;font-weight:800;font-size:20px}.brand:hover{text-decoration:none}
+.mark{display:inline-flex;width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#818cf8,#4f46e5);color:#fff;font-weight:800;font-size:20px;align-items:center;justify-content:center}
+.brand-name{font-weight:800;font-size:20px}
+.nav{display:flex;gap:22px}.nav a{color:#c7d2fe;font-weight:500}.nav a:hover{color:#fff;text-decoration:none}
+.getstarted{display:inline-block;background:linear-gradient(135deg,#818cf8,#6366f1);color:#fff;border:0;border-radius:999px;padding:8px 18px;font-weight:700;cursor:pointer}.getstarted:hover{text-decoration:none;opacity:.94}
+.hero{padding:84px 0 56px;text-align:center;position:relative;overflow:hidden;background:radial-gradient(500px 260px at 12% 30%,rgba(99,102,241,.45),transparent 65%),radial-gradient(520px 280px at 88% 25%,rgba(14,165,233,.35),transparent 65%),radial-gradient(700px 340px at 50% 110%,rgba(124,58,237,.30),transparent 70%)}
+.hero::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(129,140,248,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(129,140,248,.07) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse at center,black 30%,transparent 75%)}
+.hero>*{position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;color:#a5b4fc;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase}
+.eyebrow::before,.eyebrow::after{content:"";width:32px;height:1px;background:linear-gradient(90deg,transparent,#818cf8)}
+.eyebrow::after{background:linear-gradient(90deg,#818cf8,transparent)}
+.hero h1{font-size:52px;line-height:1.08;letter-spacing:-.5px;margin:18px auto 14px;max-width:760px}
+.grad{background:linear-gradient(90deg,#818cf8,#22d3ee);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{font-size:18px;color:#94a3b8;max-width:620px;margin:0 auto 28px}
+.cta-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.btn{display:inline-block;padding:13px 24px;border-radius:999px;border:1px solid #334155;background:rgba(255,255,255,.06);color:#fff;font-weight:700}
+.btn.primary{background:linear-gradient(135deg,#818cf8,#4f46e5);border-color:transparent;box-shadow:0 8px 30px rgba(99,102,241,.45)}
+.btn:hover{text-decoration:none;opacity:.94}
+h2{font-size:28px;letter-spacing:-.3px;margin:52px 0 6px}
+.sec-sub{color:#94a3b8;margin:0 0 18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.card{background:#fff;color:#0f172a;border:1px solid #e2e8f0;border-radius:16px;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,.35);transition:transform .15s ease}
+.card:hover{transform:translateY(-2px)}
+.logo{width:64px;height:64px;border-radius:14px;display:block;margin-bottom:14px}
+.card h3{margin:0 0 6px;font-size:19px}.card p{color:#475569;margin:0 0 14px}
+.badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.free{display:inline-block;background:#dcfce7;color:#166534;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:700}
+.soon{display:inline-block;background:#fef3c7;color:#92400e;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:700}
+.open{font-weight:700;color:#4f46e5}
+.panel{background:rgba(255,255,255,.05);border:1px solid rgba(129,140,248,.25);border-radius:16px;padding:24px;margin-top:8px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.form-grid h3{margin:0 0 10px}
+input{width:100%;padding:11px 12px;margin:6px 0;border:1px solid #334155;border-radius:10px;font:inherit;background:rgba(7,11,26,.6);color:#f1f5f9}
+button{padding:11px 20px;border-radius:10px;border:1px solid #334155;background:rgba(255,255,255,.08);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+#authMsg,#regMsg{color:#cbd5e1;word-break:break-word}
+#whoami{color:#e2e8f0}
+.foot{padding:32px 20px 44px;color:#64748b;font-size:14px;text-align:center}
+@media(max-width:640px){.hero h1{font-size:34px}.grid,.form-grid{grid-template-columns:1fr}.hero{padding:56px 0 36px}}
 [hidden]{display:none!important}
-/* Tool-card logos + Free badge */
-.tool-logo{width:64px;height:64px;border-radius:14px;display:block;margin-bottom:12px}
-.free{display:inline-block;background:#dcfce7;color:#166534;border-radius:999px;padding:3px 10px;font-size:13px;font-weight:600;margin-right:8px}
-
