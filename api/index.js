@@ -48716,8 +48716,10 @@ var require_providers = __commonJS({
         }
         const data = await resp.json();
         const text = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || "").trim();
+        if (!text) console.error("exammate provider empty reply", baseUrl);
         return { text: text || null, status: text ? "ok" : "empty" };
       } catch (e) {
+        console.error("exammate provider timeout/error", baseUrl, e && e.name);
         return { text: null, status: e && e.name === "AbortError" ? "timeout" : "error" };
       } finally {
         clearTimeout(timer);
@@ -49040,6 +49042,15 @@ var require_providerEvents = __commonJS({
         });
         return;
       }
+      const statusHint = status === "timeout" ? "Jawab 10 second me nahi aaya (timeout) \u2014 free line me queue ya slow provider ho sakta hai." : status === 401 ? "Key ghalat ya expired lag rahi hai (401) \u2014 key dobara check karo." : status === 403 ? "Key ko is model ki permission nahi hai (403) \u2014 key ki model permission check karo." : status === "empty" ? "Provider ne khaali jawab diya." : status === "error" ? "Network ya server error aaya." : `Provider ki taraf se error (status ${status}).`;
+      await createNotification(c, {
+        type: "provider_attempt_failed",
+        severity: "warning",
+        title: `${name} ki aakhri koshish fail hui`,
+        message: `${name} \u2014 status: ${status}. ${statusHint}`,
+        provider,
+        action: provider
+      });
       const streak = await c.execute({
         sql: "SELECT COUNT(*) AS n FROM provider_events WHERE provider = ? AND ok = 0 AND created_at >= datetime('now','-1 hour')",
         args: [provider]
