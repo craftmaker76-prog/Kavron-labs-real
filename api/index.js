@@ -49271,7 +49271,8 @@ var require_exammate = __commonJS({
       try {
         const c = getClient();
         const r = await c.execute({ sql: "SELECT id, country, province, class_name, subject, question, answer, created_at FROM exammate_history WHERE user_id = ? ORDER BY id DESC LIMIT 20", args: [req.params.userId] });
-        res.json({ history: r.rows });
+        const history = r.rows.map((row) => ({ ...row, answerHtml: aiTextToSafeHtml(row.answer) }));
+        res.json({ history });
       } catch (e) {
         next(e);
       }
