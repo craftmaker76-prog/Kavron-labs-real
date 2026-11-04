@@ -28,6 +28,15 @@ button:disabled{opacity:.55;cursor:wait}
 .msg.ai .body pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;overflow-x:auto}
 .msg.ai .body pre code{background:none;padding:0;color:inherit}
 .msg.ai .body a{color:#4f46e5}
+body, .chat, .msg, .composer input, .composer textarea, .composer button {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+.chat .msg.ai .body { color: #0f172a; }
+.chat .msg.ai .meta { color: #64748b; }
+.chat .msg.user .body { color: #1e293b; }
+.chat .msg.user .meta { color: #64748b; }
+#status.error{color:#DC2626;font-weight:600}
+
 /* Step-gate status errors (2026-11-04): a missing step / blocked ask shows as an
    important error — red, semibold. Loading text keeps normal styling (the JS
    removes the .error class for it). APPEND this block to the END of the repo's
