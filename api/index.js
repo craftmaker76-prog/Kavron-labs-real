@@ -49267,6 +49267,16 @@ var require_exammate = __commonJS({
         next(e);
       }
     });
+    router.get("/history", requireAuth, async (req, res, next) => {
+      try {
+        const c = getClient();
+        const r = await c.execute({ sql: "SELECT id, country, province, class_name, subject, question, answer, created_at FROM exammate_history WHERE user_id = ? ORDER BY id DESC LIMIT 20", args: [req.user.userId] });
+        const history = r.rows.map((row) => ({ ...row, answerHtml: aiTextToSafeHtml(row.answer) }));
+        res.json({ history });
+      } catch (e) {
+        next(e);
+      }
+    });
     router.get("/history/:userId", requireAuth, requireOwnership((req) => req.params.userId), async (req, res, next) => {
       try {
         const c = getClient();
