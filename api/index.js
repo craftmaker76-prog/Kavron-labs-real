@@ -23879,6 +23879,7 @@ var require_env = __commonJS({
       mistralKey: (process.env.MISTRAL_API_KEY || "").trim(),
       cohereKey: (process.env.COHERE_API_KEY || "").trim(),
       iteracomputeKey: (process.env.ITERACOMPUTE_API_KEY || "").trim(),
+      pollinationsKey: (process.env.POLLINATIONS_API_KEY || "").trim(),
       // Meta Model API key (dev.meta.ai, starts LLM_). A Muse APP account's
       // tokens cannot power this — only a Model API key can.
       museKey: (process.env.MODEL_API_KEY || "").trim(),
@@ -23887,6 +23888,7 @@ var require_env = __commonJS({
       mistralModel: (process.env.MISTRAL_MODEL || "ministral-8b-latest").trim(),
       cohereModel: (process.env.COHERE_MODEL || "command-a-plus-05-2026").trim(),
       iteracomputeModel: (process.env.ITERACOMPUTE_MODEL || "qwen/qwen3.8-27b").trim(),
+      pollinationsModel: (process.env.POLLINATIONS_MODEL || "openai").trim(),
       museModel: (process.env.MUSE_MODEL || "muse-wonder-1.0").trim(),
       exammateDailyCap: num(process.env.EXAMMATE_DAILY_CAP_PER_USER, 20),
       exammateMonthlyTokenCap: num(process.env.EXAMMATE_MONTHLY_TOKEN_CAP, 1e6),
@@ -48789,6 +48791,7 @@ var require_providers = __commonJS({
       if (config.mistralKey) attempts.push({ id: "mistral", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.mistral.ai/v1", key: config.mistralKey, model: config.mistralModel, prompt, timeoutMs: t }) });
       if (config.cohereKey) attempts.push({ id: "cohere", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://api.cohere.ai/compatibility/v1", key: config.cohereKey, model: config.cohereModel, prompt, timeoutMs: t }) });
       if (config.iteracomputeKey) attempts.push({ id: "iteracompute", timeoutMs: 2e4, call: (t) => callChatCompletions({ baseUrl: "https://api.iteracompute.com/v1", key: config.iteracomputeKey, model: config.iteracomputeModel, prompt, timeoutMs: t, extraBody: { reasoning: false } }) });
+      if (config.pollinationsKey) attempts.push({ id: "pollinations", timeoutMs: 15e3, call: (t) => callChatCompletions({ baseUrl: "https://gen.pollinations.ai/v1", key: config.pollinationsKey, model: config.pollinationsModel, prompt, timeoutMs: t }) });
       for (const att of attempts) {
         if (!isEnabled(att.id) || !underLimit(att.id)) continue;
         const remaining = remainingMs();
@@ -48921,7 +48924,7 @@ var require_keyResolver = __commonJS({
     var config = require_env();
     var { getClient } = require_client4();
     var { decryptKey } = require_keyCrypto();
-    var ENV_KEYS = { gemini: "geminiKey", groq: "groqKey", openrouter: "openrouterKey", mistral: "mistralKey", cohere: "cohereKey", iteracompute: "iteracomputeKey", muse: "museKey" };
+    var ENV_KEYS = { gemini: "geminiKey", groq: "groqKey", openrouter: "openrouterKey", mistral: "mistralKey", cohere: "cohereKey", iteracompute: "iteracomputeKey", pollinations: "pollinationsKey", muse: "museKey" };
     async function resolveProviderKeys() {
       const keys = {};
       const enabled = {};
@@ -48966,7 +48969,7 @@ var require_registry = __commonJS({
       { id: "iteracompute", name: "IteraCompute Qwen", wired: true, envKey: "ITERACOMPUTE_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "Qwen3.8-27B free, 30M tokens/month, no card \u2014 promo ends 24 Nov 2026" },
       { id: "sambanova", name: "SambaNova", wired: false, envKey: "SAMBANOVA_API_KEY", dailyLimit: 20, limitPeriod: "day", limitNote: "Free tier disputed \u2014 try, skip if card asked" },
       { id: "huggingface", name: "Hugging Face", wired: false, envKey: "HF_TOKEN", dailyLimit: null, limitPeriod: null, limitNote: "$0.10/month credit, test-level" },
-      { id: "pollinations", name: "Pollinations", wired: false, envKey: null, dailyLimit: null, limitPeriod: null, limitNote: "Keyless free API, variable reliability" },
+      { id: "pollinations", name: "Pollinations", wired: true, envKey: "POLLINATIONS_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "gen.pollinations.ai keyed, model openai, Pollen credits, best-effort last backup" },
       { id: "muse", name: "Muse (Model API)", wired: true, envKey: "MODEL_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "Paid/billing \u2014 sequential last only" }
     ];
     function getProvider(id) {
@@ -49202,7 +49205,7 @@ var require_exammate = __commonJS({
           limits[id] = states[id].effectiveLimit;
           todayCounts[id] = states[id].today;
         }
-        if (!resolvedKeys.gemini && !resolvedKeys.groq && !resolvedKeys.openrouter && !resolvedKeys.mistral && !resolvedKeys.cohere && !resolvedKeys.iteracompute && !resolvedKeys.muse) {
+        if (!resolvedKeys.gemini && !resolvedKeys.groq && !resolvedKeys.openrouter && !resolvedKeys.mistral && !resolvedKeys.cohere && !resolvedKeys.iteracompute && !resolvedKeys.pollinations && !resolvedKeys.muse) {
           return res.status(503).json({ error: "AI service is not configured yet. Please try again later." });
         }
         const prompt = buildTutorPrompt({ country, province, className, board, subject, question });
@@ -49211,14 +49214,14 @@ var require_exammate = __commonJS({
         };
         const result = await askWithFallback({
           prompt,
-          config: { ...config, geminiKey: resolvedKeys.gemini, groqKey: resolvedKeys.groq, openrouterKey: resolvedKeys.openrouter, mistralKey: resolvedKeys.mistral, cohereKey: resolvedKeys.cohere, iteracomputeKey: resolvedKeys.iteracompute, museKey: resolvedKeys.muse },
+          config: { ...config, geminiKey: resolvedKeys.gemini, groqKey: resolvedKeys.groq, openrouterKey: resolvedKeys.openrouter, mistralKey: resolvedKeys.mistral, cohereKey: resolvedKeys.cohere, iteracomputeKey: resolvedKeys.iteracompute, pollinationsKey: resolvedKeys.pollinations, museKey: resolvedKeys.muse },
           enabled,
           onAttempt,
           limits,
           todayCounts
         });
         if (!result) {
-          const anyFreeEligible = ["gemini", "groq", "openrouter", "mistral", "cohere", "iteracompute"].some((id) => {
+          const anyFreeEligible = ["gemini", "groq", "openrouter", "mistral", "cohere", "iteracompute", "pollinations"].some((id) => {
             const entry = getProvider(id);
             const s = states[id];
             return entry && entry.wired && s && s.enabled && resolvedKeys[id] && !s.autoOff;
