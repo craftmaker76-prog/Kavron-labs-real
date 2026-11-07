@@ -15,6 +15,7 @@ const { csrfProtect } = require('../middleware/csrf');
 const { PROVIDERS, getProvider } = require('../services/exammate/registry');
 const { encryptKey, keyHint } = require('../services/admin/keyCrypto');
 const { listNotifications, markRead, markAllRead } = require('../services/admin/notifications');
+const { effectiveLimitFor, parseCustomLimit } = require('../services/admin/providerLimits');
 
 // Self-healing schema: the first admin request ensures the panel tables
 // and columns exist (cached afterwards). Normal site traffic never pays it.
@@ -59,7 +60,7 @@ router.get('/providers', requireAuth, requireRole('admin'), async (req, res, nex
     const c = getClient();
     const today = new Date().toISOString().slice(0, 10);
     const month = new Date().toISOString().slice(0, 7);
-    const cfg = await c.execute('SELECT provider, encrypted_key, key_hint, enabled FROM provider_config');
+    const cfg = await c.execute('SELECT provider, encrypted_key, key_hint, enabled, custom_limit FROM provider_config');
     const cfgById = {};
     for (const row of cfg.rows) cfgById[row.provider] = row;
     const todayRows = await c.execute({ sql: "SELECT provider, COUNT(*) AS n FROM exammate_history WHERE substr(created_at,1,10) = ? GROUP BY provider", args: [today] });
@@ -71,15 +72,29 @@ router.get('/providers', requireAuth, requireRole('admin'), async (req, res, nex
     const providers = PROVIDERS.map((p) => {
       const row = cfgById[p.id];
       const hasPanelKey = !!(row && row.encrypted_key);
+      const enabled = row ? !!row.enabled : true;
+      const rawCustom = row ? row.custom_limit : null;
+      const customLimit = rawCustom === null || rawCustom === undefined || Number.isNaN(Number(rawCustom)) ? null : Number(rawCustom);
+      const effectiveLimit = effectiveLimitFor(p, customLimit);
+      const todayCount = todayById[p.id] || 0;
+      // Auto-off is computed live from the Today count, never persisted:
+      // the toggle below always reflects the manual enabled flag, so the
+      // admin is never confused about what clicking it does.
+      const autoOff = enabled && effectiveLimit !== null && todayCount >= effectiveLimit;
+      const status = !enabled ? 'Off' : (autoOff ? 'Auto-off (limit reached)' : 'Active');
       return {
         id: p.id, name: p.name, wired: p.wired,
         dailyLimit: p.dailyLimit, limitPeriod: p.limitPeriod, limitNote: p.limitNote,
         keyFields: p.keyFields || [{ name: 'key', label: 'API Key' }],
         keySource: hasPanelKey ? 'panel' : (envHasKey(p) ? 'env' : 'none'),
         keyHint: hasPanelKey ? row.key_hint : null,
-        enabled: row ? !!row.enabled : true,
-        today: todayById[p.id] || 0,
+        enabled,
+        today: todayCount,
         monthTokens: monthById[p.id] || 0,
+        custom_limit: customLimit,
+        effective_limit: effectiveLimit,
+        autoOff,
+        status,
       };
     });
     res.json({ providers });
@@ -144,6 +159,28 @@ router.post('/providers/:id/toggle', requireAuth, requireRole('admin'), csrfProt
     });
     await audit(c, req.user.userId, 'provider_toggled', `${entry.id} -> ${req.body.enabled ? 'on' : 'off'}`);
     res.json({ ok: true, enabled: req.body.enabled });
+  } catch (e) { next(e); }
+});
+
+// Set / clear a provider's custom daily limit (questions/day). Body:
+// { limit } where limit is a non-negative integer (0..1000000) or
+// null/empty to clear the custom limit (published limit or unlimited
+// applies again). Only custom_limit is touched — key and enabled are
+// preserved. The limit takes effect on the next ask (live computation).
+router.post('/providers/:id/limit', requireAuth, requireRole('admin'), csrfProtect, async (req, res, next) => {
+  try {
+    const entry = getProvider(req.params.id);
+    if (!entry) return res.status(404).json({ error: 'Unknown provider.' });
+    const parsed = parseCustomLimit(req.body ? req.body.limit : undefined);
+    if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+    const c = getClient();
+    await c.execute({
+      sql: `INSERT INTO provider_config (provider, encrypted_key, key_hint, enabled, custom_limit, updated_at) VALUES (?, NULL, NULL, 1, ?, datetime('now'))
+        ON CONFLICT(provider) DO UPDATE SET custom_limit = excluded.custom_limit, updated_at = datetime('now')`,
+      args: [entry.id, parsed.limit],
+    });
+    await audit(c, req.user.userId, 'provider_limit_set', `${entry.id} -> ${parsed.limit === null ? 'cleared' : parsed.limit}`);
+    res.json({ ok: true, custom_limit: parsed.limit, effective_limit: effectiveLimitFor(entry, parsed.limit) });
   } catch (e) { next(e); }
 });
 
