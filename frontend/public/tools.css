@@ -31,6 +31,16 @@ img.preview{max-width:100%;border:1px solid rgba(129,140,248,.25);border-radius:
 .cat-image .tool-icon{background:linear-gradient(135deg,#10b981,#059669)}
 .cat-pdf .tool-icon{background:linear-gradient(135deg,#f43f5e,#be123c)}
 .cat-text .tool-icon{background:linear-gradient(135deg,#f59e0b,#d97706)}
+.cat-seo .tool-icon{background:linear-gradient(135deg,#8b5cf6,#6d28d9)}
+.cat-developer .tool-icon{background:linear-gradient(135deg,#38bdf8,#0284c7)}
+.cat-business .tool-icon{background:linear-gradient(135deg,#4ade80,#15803d)}
+.cat-learning .tool-icon{background:linear-gradient(135deg,#ec4899,#be185d)}
+.flash-card{margin:8px 0}
+.nav{flex-wrap:wrap}
+
+/* --- legal pages --- */
+.page h1{font-size:30px;letter-spacing:-.3px;margin:24px 0 8px}
+.page li{margin:6px 0;color:#cbd5e1}
 .card .tool-count{color:#94a3b8;font-size:14px;margin:0}
 .crumb{font-size:14px;color:#94a3b8;margin:24px 0 0}
 .crumb a{color:#a5b4fc}
