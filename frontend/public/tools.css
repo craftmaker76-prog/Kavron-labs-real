@@ -1,0 +1,75 @@
+/* Kavron Labs tools pages (tools.html). Dark theme, matching the live homepage.
+   Loaded as an external file on purpose: the site CSP allows styles only
+   from the site itself ('self'), so no inline style elements and no style
+   attributes are used anywhere in the pack. */
+
+/* --- tool form area --- */
+.toolbox{background:rgba(255,255,255,.05);border:1px solid rgba(129,140,248,.25);border-radius:16px;padding:22px;margin:16px 0}
+.toolbox label{font-weight:600;font-size:14px;display:block;margin:12px 0 4px;color:#e2e8f0}
+.toolbox textarea,.toolbox select{width:100%;padding:11px 12px;margin:6px 0;border:1px solid #334155;border-radius:10px;font:inherit;background:rgba(7,11,26,.6);color:#f1f5f9}
+.toolbox input[type="file"]{width:100%;padding:11px 12px;margin:6px 0;border:1px solid #334155;border-radius:10px;font:inherit;background:rgba(7,11,26,.6);color:#f1f5f9}
+.toolbox input[type="checkbox"].checkbox{width:auto;margin-right:6px}
+.toolbox input[type="range"]{width:100%;margin:6px 0}
+.toolbox button.secondary{background:rgba(255,255,255,.08);color:#fff}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:640px){.row{grid-template-columns:1fr}}
+
+/* --- result / messages --- */
+.result{white-space:pre-wrap;background:rgba(7,11,26,.6);border:1px solid rgba(129,140,248,.25);border-radius:10px;padding:14px;min-height:80px;margin:12px 0;color:#f1f5f9;word-break:break-word}
+.error{color:#fca5a5;font-weight:600}
+.notice{border:1px solid #f59e0b;background:#451a03;color:#fde68a;border-radius:10px;padding:12px;margin:12px 0}
+.small{font-size:13px;color:#94a3b8}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap}
+img.preview{max-width:100%;border:1px solid rgba(129,140,248,.25);border-radius:10px;margin-top:10px}
+
+/* --- tool cards on category pages --- */
+.cat-badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;margin-bottom:10px}
+.cat-image .cat-badge{background:#064e3b;color:#a7f3d0}
+.cat-pdf .cat-badge{background:#4c0519;color:#fecdd3}
+.cat-text .cat-badge{background:#451a03;color:#fde68a}
+.tool-icon{width:52px;height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px}
+.cat-image .tool-icon{background:linear-gradient(135deg,#10b981,#059669)}
+.cat-pdf .tool-icon{background:linear-gradient(135deg,#f43f5e,#be123c)}
+.cat-text .tool-icon{background:linear-gradient(135deg,#f59e0b,#d97706)}
+.card .tool-count{color:#94a3b8;font-size:14px;margin:0}
+.crumb{font-size:14px;color:#94a3b8;margin:24px 0 0}
+.crumb a{color:#a5b4fc}
+.tool-head{display:flex;gap:16px;align-items:flex-start;margin:18px 0 6px}
+.tool-head .tool-icon{flex:none;margin-bottom:0}
+.tool-head h1{margin:0 0 6px;font-size:28px;letter-spacing:-.3px}
+.tool-head p{margin:0;color:#cbd5e1}
+
+/* --- live search bar --- */
+.searchbar{display:flex;gap:8px;margin:16px 0 4px}
+.searchbar input[type="search"]{flex:1;padding:12px 14px;border:1px solid #334155;border-radius:12px;font:inherit;background:rgba(7,11,26,.6);color:#f1f5f9}
+.searchbar input[type="search"]::placeholder{color:#64748b}
+.searchbar button{flex:none}
+
+/* --- status badges on tool cards --- */
+.status{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;margin-top:10px}
+.status-working{background:#064e3b;color:#a7f3d0}
+.status-partial{background:#451a03;color:#fde68a}
+.status-soon{background:#1e293b;color:#94a3b8}
+.card{position:relative}
+.sec-sub{color:#94a3b8;margin:4px 0 14px}
+.pdf-section{margin:22px 0}
+.pdf-section h2{margin-bottom:2px}
+
+/* --- upload drop zone --- */
+.field{margin:12px 0}
+.field-label{display:block;font-weight:600;font-size:14px;margin:12px 0 4px;color:#e2e8f0}
+.dropzone{border:2px dashed #475569;border-radius:12px;padding:20px;text-align:center;color:#cbd5e1;background:rgba(7,11,26,.4);cursor:pointer}
+.dropzone.drag{border-color:#818cf8;background:rgba(129,140,248,.12)}
+.dropzone button{margin-left:6px}
+
+/* --- how-to + notices --- */
+.how{background:rgba(7,11,26,.4);border:1px solid rgba(129,140,248,.2);border-radius:12px;padding:14px 18px;margin:12px 0}
+.how h3{margin:0 0 8px;font-size:15px}
+.how ol{margin:0;padding-left:20px}
+.how li{margin:4px 0;color:#cbd5e1}
+.server-notice{border-color:#38bdf8;background:#0c2d3d;color:#bae6fd}
+.limit-notice{border-color:#f59e0b;background:#451a03;color:#fde68a}
+
+/* --- signature pad + camera --- */
+.sigpad{width:100%;max-width:520px;height:160px;background:#fff;border-radius:10px;border:1px solid #334155;touch-action:none;cursor:crosshair}
+.cam{width:100%;max-width:520px;border-radius:10px;border:1px solid #334155;background:#000}

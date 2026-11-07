@@ -7,9 +7,9 @@ var ANIMS = {
 };
 var TOOLS = {
   "ExamMate": {desc: "Ask study questions and get answers in your own language.", live: true, review: "Loved by students", rating: "4.8/5", anim: "exammate", users: 22.8},
-  "Picture Tools": {desc: "Resize, compress and convert images.", live: false, review: "A favourite for quick edits", rating: "4.7/5", anim: "picture", users: 18.6},
-  "PDF Tools": {desc: "Merge and split PDF files.", live: false, review: "Rated highly for everyday documents", rating: "4.6/5", anim: "pdf", users: 15.3},
-  "Text Tools": {desc: "Count words and convert text case.", live: false, review: "Praised for its simplicity", rating: "4.9/5", anim: "text", users: 12.1}
+  "Picture Tools": {desc: "Resize, compress and convert images.", live: true, url: "/tools.html?cat=image", review: "A favourite for quick edits", rating: "4.7/5", anim: "picture", users: 18.6},
+  "PDF Tools": {desc: "Merge and split PDF files.", live: true, url: "/tools.html?cat=pdf", review: "Rated highly for everyday documents", rating: "4.6/5", anim: "pdf", users: 15.3},
+  "Text Tools": {desc: "Count words and convert text case.", live: true, url: "/tools.html?cat=text", review: "Praised for its simplicity", rating: "4.9/5", anim: "text", users: 12.1}
 };
 var back = document.getElementById('splashBack');
 var timer = null;
@@ -28,7 +28,7 @@ function openSplash(name, logoSrc) {
   back.classList.add('show');
   clearTimeout(timer);
   timer = setTimeout(function() {
-    if (TOOLS[name].live) { window.location.href = '/exammate.html'; }
+    if (TOOLS[name].live) { window.location.href = TOOLS[name].url || '/exammate.html'; }
     else { st.textContent = name + ' is Coming soon. Stay tuned!'; }
   }, 5000);
 }
