@@ -1,8 +1,11 @@
-// Kavron Labs tools pages (tools.html) — frontend-only.
-// Every tool here runs fully in the browser. There is no network call of
-// any kind in this file: no login, no AI tools, no saved results, no pricing.
-// Image and PDF files are processed with Canvas in the browser and are
-// never uploaded anywhere.
+// Kavron Labs tools pages (tools.html) — frontend.
+// Most tools here run fully in the browser with no network call of any
+// kind: no login, no saved results, no pricing. Image and PDF files are
+// processed with Canvas in the browser and are never uploaded anywhere.
+// The 4 AI tools are the exception: they call same-origin /api/ai/*
+// endpoints, require login, and send the X-CSRF-Token from /api/auth/me
+// (see the AI branch in bindTool). No other network calls exist in this
+// file, and no cross-origin fetch is made anywhere.
 // Loaded as an external module on purpose: the site CSP allows scripts
 // only from the site itself ('self'), so no inline scripts and no inline
 // event attributes are used anywhere in the pack.
@@ -21,6 +24,7 @@ const CATS = {
   developer: { name: "Developer Tools", icon: "🧑‍💻", desc: "JSON, encoding, hashes, timestamps, colours, regex and more — in your browser." },
   business: { name: "Business Tools", icon: "💼", desc: "Margins, tax, budgets and invoices — in your browser, nothing uploaded." },
   learning: { name: "Learning Tools", icon: "🎓", desc: "Study notes, flashcards and quizzes made from your own text — local, non-AI." },
+  ai: { name: "AI Tools", icon: "✨", desc: "AI writing tools — text, captions, product descriptions and emails. Requires login. 5 free AI requests per day." },
 };
 
 const TOOLS = [
@@ -60,6 +64,10 @@ const TOOLS = [
   { slug: "study-notes-generator", name: "Study Notes Generator", cat: "learning", icon: "📖", desc: "Extractive notes: picks key sentences from pasted text. Local and labelled non-AI.", faq: "Extractive means sentences are picked from your text, not written fresh — this is not AI summarising." },
   { slug: "flashcard-generator", name: "Flashcard Generator", cat: "learning", icon: "🎴", desc: "Lines in 'Question | Answer' format become reveal cards. Local, non-AI.", faq: "Write one card per line, with a | between question and answer." },
   { slug: "quiz-generator", name: "Quiz Generator", cat: "learning", icon: "❓", desc: "Fill-in-the-blank questions made from pasted sentences. Template-based, local, non-AI.", faq: "Template-based: each sentence becomes one blanked question. This is not AI question writing." },
+  { slug: "ai-text-generator", name: "AI Text Generator", cat: "ai", icon: "✍️", desc: "Real AI writing — requires login. 5 free requests per day.", faq: "AI output is a draft — check facts before publishing." },
+  { slug: "ai-caption-generator", name: "Social Media Caption Generator", cat: "ai", icon: "📣", desc: "Real AI captions — requires login. 5 free requests per day.", faq: "Captions are drafts; add your own details before posting." },
+  { slug: "ai-product-description", name: "Product Description Generator", cat: "ai", icon: "🛍️", desc: "Real AI product descriptions — requires login. 5 free requests per day.", faq: "The tool never invents features you did not provide — check the draft." },
+  { slug: "ai-email-writer", name: "AI Email Writer", cat: "ai", icon: "✉️", desc: "Real AI emails — requires login. 5 free requests per day.", faq: "Review any commitment or date in a draft before sending." },
 ];
 
 function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -162,6 +170,10 @@ function toolFormHtml(slug) {
     case "study-notes-generator": return `<label>Paste text to study <textarea id="in" rows="10" maxlength="100000"></textarea></label><label>Max notes <input id="in2" type="number" min="1" max="10" value="5"></label><button type="button" id="runBtn">Generate notes</button> <button type="button" id="exampleBtn" class="secondary">Example</button><p class="small">Extractive, local, non-AI: key sentences are picked from your text.</p>`;
     case "flashcard-generator": return `<label>One card per line: Question | Answer <textarea id="in" rows="8" maxlength="100000" placeholder="What is 2 + 2? | 4"></textarea></label><button type="button" id="runBtn">Generate cards</button> <button type="button" id="exampleBtn" class="secondary">Example</button>`;
     case "quiz-generator": return `<label>Paste sentences <textarea id="in" rows="8" maxlength="100000"></textarea></label><button type="button" id="runBtn">Generate quiz</button> <button type="button" id="exampleBtn" class="secondary">Example</button><p class="small">Template-based, local, non-AI.</p>`;
+    case "ai-text-generator": return `<label>What should the AI write? <textarea id="in" rows="6" maxlength="2000" placeholder="Describe what you want written…"></textarea></label><button type="button" id="runBtn">Generate</button> <button type="button" id="exampleBtn" class="secondary">Example</button>`;
+    case "ai-caption-generator": return `<label>Describe your post <textarea id="in" rows="6" maxlength="2000" placeholder="Describe your post — topic, product, mood…"></textarea></label><button type="button" id="runBtn">Generate</button> <button type="button" id="exampleBtn" class="secondary">Example</button>`;
+    case "ai-product-description": return `<label>Product details <textarea id="in" rows="6" maxlength="2000" placeholder="Product name, features, who it is for…"></textarea></label><button type="button" id="runBtn">Generate</button> <button type="button" id="exampleBtn" class="secondary">Example</button>`;
+    case "ai-email-writer": return `<label>What should the email say? <textarea id="in" rows="6" maxlength="2000" placeholder="Who is it to, and what should it say?"></textarea></label><button type="button" id="runBtn">Generate</button> <button type="button" id="exampleBtn" class="secondary">Example</button>`;
     default: return `<p>This tool is not available.</p>`;
   }
 }
@@ -236,6 +248,162 @@ async function runFileTool(slug) {
   }
 }
 
+/* --- AI tools (the only tools in this file that use the network) ---
+   Same-origin /api/ai/* only, login + CSRF, exactly like ExamMate:
+   GET /api/auth/me (credentials:'include') returns {email, role,
+   csrfToken}; state-changing POST/DELETE calls send that token as the
+   'X-CSRF-Token' header. 401 from /api/auth/me or /api/ai/usage means
+   the visitor is not logged in, so the login gate is shown instead of
+   the form. Quota is 5 free AI requests per day per account. */
+const AI_SLUGS = ["ai-text-generator", "ai-caption-generator", "ai-product-description", "ai-email-writer"];
+const AI_DAILY_LIMIT = 5;
+let aiCsrfToken = null;
+function isAiTool(slug) { return AI_SLUGS.includes(slug); }
+function quotaText(remaining, limit) { return `${remaining} of ${limit} free requests left today`; }
+function setQuota(remaining, limit) {
+  const el = document.getElementById("quotaLine");
+  if (el && Number.isFinite(remaining) && Number.isFinite(limit)) el.textContent = quotaText(remaining, limit);
+}
+function showAiGate() {
+  const gate = document.getElementById("aiGate");
+  const form = document.getElementById("toolForm");
+  if (gate) gate.hidden = false;
+  if (form) form.hidden = true;
+  const saveBtn = document.getElementById("saveBtn");
+  if (saveBtn) saveBtn.hidden = true;
+}
+async function getAiCsrf() {
+  if (aiCsrfToken) return aiCsrfToken;
+  const r = await fetch("/api/auth/me", { credentials: "include" });
+  if (!r.ok) return null;
+  const me = await r.json();
+  aiCsrfToken = me.csrfToken || null;
+  return aiCsrfToken;
+}
+async function readJsonSafe(r) { try { return await r.json(); } catch (e) { return {}; } }
+function renderSavedList(items, slug) {
+  const list = document.getElementById("savedList");
+  if (!list) return;
+  list.textContent = "";
+  const mine = (items || []).filter((it) => it.tool === slug);
+  if (!mine.length) {
+    const p = document.createElement("p");
+    p.className = "small";
+    p.textContent = "No saved results yet for this tool.";
+    list.appendChild(p);
+    return;
+  }
+  mine.forEach((it) => {
+    const wrap = document.createElement("div");
+    wrap.className = "saved-item";
+    const meta = document.createElement("p");
+    meta.className = "small";
+    meta.textContent = (it.created_at || "").slice(0, 10);
+    const snippet = document.createElement("p");
+    snippet.textContent = String(it.input || "").slice(0, 120);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "secondary";
+    del.textContent = "Delete";
+    del.setAttribute("data-saved-id", String(it.id));
+    del.addEventListener("click", async () => {
+      del.disabled = true;
+      try {
+        const token = await getAiCsrf();
+        const r = await fetch("/api/ai/saved/" + encodeURIComponent(String(it.id)), { method: "DELETE", headers: token ? { "X-CSRF-Token": token } : {}, credentials: "include" });
+        if (r.status === 401) { showAiGate(); return; }
+        if (!r.ok) { setErr("toolErr", "Could not delete that saved result. Please try again."); del.disabled = false; return; }
+        await loadAiSaved(slug);
+      } catch (e) {
+        setErr("toolErr", "Could not reach the server. Check your connection and try again.");
+        del.disabled = false;
+      }
+    });
+    wrap.appendChild(meta);
+    wrap.appendChild(snippet);
+    wrap.appendChild(del);
+    list.appendChild(wrap);
+  });
+}
+async function loadAiSaved(slug) {
+  const r = await fetch("/api/ai/saved", { credentials: "include" });
+  if (r.status === 401) { showAiGate(); return; }
+  if (!r.ok) return;
+  const data = await readJsonSafe(r);
+  renderSavedList(data.items, slug);
+}
+async function loadAiUsage() {
+  const r = await fetch("/api/ai/usage", { credentials: "include" });
+  if (r.status === 401) { showAiGate(); return false; }
+  if (!r.ok) return false;
+  const data = await readJsonSafe(r);
+  setQuota(data.remaining, data.limit);
+  return true;
+}
+function bindAiTool(tool) {
+  const slug = tool.slug;
+  const runBtn = document.getElementById("runBtn");
+  const saveBtn = document.getElementById("saveBtn");
+  const getVal = (id) => { const el = document.getElementById(id); return el ? el.value : ""; };
+  if (saveBtn) saveBtn.addEventListener("click", async () => {
+    const result = document.getElementById("result");
+    if (!result || !result.innerHTML.trim() || result.textContent.trim() === "Working…") { setErr("toolErr", "Generate a result first, then save it."); return; }
+    saveBtn.disabled = true;
+    try {
+      const token = await getAiCsrf();
+      if (!token) { showAiGate(); saveBtn.disabled = false; return; }
+      const r = await fetch("/api/ai/save", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": token }, credentials: "include", body: JSON.stringify({ tool: slug, input: getVal("in"), outputHtml: result.innerHTML }) });
+      const data = await readJsonSafe(r);
+      if (r.status === 401) { showAiGate(); saveBtn.disabled = false; return; }
+      if (r.status === 429) { setErr("toolErr", data.error || "You have reached the limit of 50 saved results."); saveBtn.disabled = false; return; }
+      if (!r.ok) { setErr("toolErr", data.error || "Could not save this result. Please try again."); saveBtn.disabled = false; return; }
+      setErr("toolMsg", "Saved.");
+      await loadAiSaved(slug);
+    } catch (e) {
+      setErr("toolErr", "Could not reach the server. Check your connection and try again.");
+    }
+    saveBtn.disabled = false;
+  });
+  if (!runBtn) return;
+  runBtn.addEventListener("click", async () => {
+    setErr("toolErr", ""); setErr("toolMsg", "");
+    const input = getVal("in").trim();
+    if (!input) { setOut("result", ""); setErr("toolErr", "Please enter some text first."); return; }
+    if (input.length > 2000) { setOut("result", ""); setErr("toolErr", "Please keep your text under 2000 characters."); return; }
+    setOut("result", "Working…");
+    runBtn.disabled = true;
+    if (saveBtn) saveBtn.hidden = true;
+    try {
+      const token = await getAiCsrf();
+      if (!token) { setOut("result", ""); showAiGate(); runBtn.disabled = false; return; }
+      const r = await fetch("/api/ai/generate", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": token }, credentials: "include", body: JSON.stringify({ tool: slug, input }) });
+      const data = await readJsonSafe(r);
+      if (r.status === 401) { setOut("result", ""); showAiGate(); runBtn.disabled = false; return; }
+      if (!r.ok) {
+        setOut("result", "");
+        setErr("toolErr", data.error || (r.status === 429 ? "You have used all 5 free AI requests for today. Please try again tomorrow." : (r.status === 502 || r.status === 503) ? "The AI service is unavailable right now. Please try again later." : "Something went wrong. Please try again."));
+        runBtn.disabled = false;
+        return;
+      }
+      // data.answerHtml is server-sanitized HTML, rendered as HTML on purpose.
+      document.getElementById("result").innerHTML = data.answerHtml || "";
+      setQuota(data.remaining, data.limit);
+      if (saveBtn) saveBtn.hidden = false;
+    } catch (e) {
+      setOut("result", "");
+      setErr("toolErr", "Could not reach the server. Check your connection and try again.");
+    }
+    runBtn.disabled = false;
+  });
+  // Page load: login check first (401 shows the gate), then quota + saved.
+  (async () => {
+    let token = null;
+    try { token = await getAiCsrf(); } catch (e) { setErr("toolErr", "Could not reach the server. Check your connection and try again."); return; }
+    if (!token) { showAiGate(); return; }
+    try { await loadAiUsage(); await loadAiSaved(slug); } catch (e) { setErr("toolErr", "Could not reach the server. Check your connection and try again."); }
+  })();
+}
+
 function bindTool(tool) {
   const slug = tool.slug;
   const runBtn = document.getElementById("runBtn");
@@ -265,6 +433,10 @@ function bindTool(tool) {
     else if (slug === "study-notes-generator") document.getElementById("in").value = "Fresh bread is baked every morning. The bakery uses local flour and traditional recipes. Customers love the morning pastries. Delivery starts at eight in the morning.";
     else if (slug === "flashcard-generator") document.getElementById("in").value = "What is 2 + 2? | 4\nCapital of France? | Paris";
     else if (slug === "quiz-generator") document.getElementById("in").value = "Fresh bread is baked every morning at the bakery.";
+    else if (slug === "ai-text-generator") document.getElementById("in").value = "Write a short welcome message for a new bakery in Karachi.";
+    else if (slug === "ai-caption-generator") document.getElementById("in").value = "A new bakery in Karachi, fresh bread every morning, warm and friendly.";
+    else if (slug === "ai-product-description") document.getElementById("in").value = "Handmade herbal hair oil with alsi, darcheeni, laung, curry patta and hibiscus. For dry, frizzy hair.";
+    else if (slug === "ai-email-writer") document.getElementById("in").value = "To a customer: their order will arrive tomorrow, thank them and offer help.";
   });
   document.getElementById("copyBtn").addEventListener("click", () => copyText(document.getElementById("result").textContent || "", "toolMsg"));
   document.getElementById("downloadBtn").addEventListener("click", () => downloadText(slug + "-result.txt", document.getElementById("result").textContent || ""));
@@ -290,6 +462,7 @@ function bindTool(tool) {
   if (dateToUnixBtn) dateToUnixBtn.addEventListener("click", () => { const v = getVal("in2"); if (!v) { setErr("toolErr", "Pick a date and time first."); return; } setOut("result", String(Math.floor(new Date(v).getTime() / 1000))); });
   const rgbBtn = document.getElementById("rgbBtn");
   if (rgbBtn) rgbBtn.addEventListener("click", () => { const r = rgbToHex(getVal("in2"), getVal("in3"), document.getElementById("bIn").value); if (!r.ok) { setOut("result", ""); setErr("toolErr", r.error); } else setOut("result", r.hex); });
+  if (isAiTool(slug)) { bindAiTool(tool); return; }
   if (!runBtn) return;
   runBtn.addEventListener("click", async () => {
     setErr("toolErr", ""); setErr("toolMsg", ""); setOut("result", "Working…");
@@ -336,7 +509,7 @@ function bindTool(tool) {
 function pageAll() {
   document.title = "Tools — Kavron Labs";
   const total = TOOLS.length + PDF_TOOLS.length;
-  app.innerHTML = `<h2>All Tools</h2><p class="sec-sub">${total} free tools. Everything runs in your browser — no uploads, no account needed.</p>
+  app.innerHTML = `<h2>All Tools</h2><p class="sec-sub">${total} free tools. Most tools run in your browser — no uploads, no account needed. AI tools need a login and give 5 free requests a day.</p>
   <div class="searchbar"><input id="toolSearch" type="search" placeholder="Search all tools — try “excel”, “pdf”, “image”… " aria-label="Search tools"><button type="button" id="searchClear" class="secondary" hidden>Clear ×</button></div>
   <p id="noMatch" class="notice" hidden>No tools match your search. Try another keyword, or clear the search to see all tools.</p>` +
     Object.keys(CATS).map((k) => {
@@ -370,7 +543,7 @@ function pageCategory(catKey) {
     : `<span class="tool-icon cat-${catKey}" aria-hidden="true">${esc(cat.icon || "🔧")}</span>`;
   app.innerHTML = `<p class="crumb"><a href="/">Home</a> › <a href="/tools.html">All Tools</a> › ${esc(cat.name)}</p>
   <div class="tool-head">${headIcon}<div><h1>${esc(cat.name)}</h1><p>${esc(cat.desc)}</p></div></div>
-  <p class="small">Free to use. No account needed. Your files and text stay in your browser.</p>
+  <p class="small">${catKey === "ai" ? "Requires login. 5 free AI requests per day." : "Free to use. No account needed. Your files and text stay in your browser."}</p>
   <div class="searchbar"><input id="toolSearch" type="search" placeholder="Search ${esc(cat.name)} — try a keyword…" aria-label="Search ${esc(cat.name)}"><button type="button" id="searchClear" class="secondary" hidden>Clear ×</button></div>
   <p id="noMatch" class="notice" hidden>No tools match your search. Try another keyword, or clear the search to see all tools.</p>
   <div class="grid">${list.map(toolCard).join("")}</div>`;
@@ -402,15 +575,25 @@ function pageTool(slug) {
   const cat = CATS[tool.cat];
   document.title = `${tool.name} — Kavron Labs`;
   const related = TOOLS.filter((t) => t.cat === tool.cat && t.slug !== slug);
-  const privacy = (tool.cat === "image" || tool.cat === "pdf")
-    ? "Privacy: this tool runs in your browser. Your files are not uploaded to any server."
-    : "Privacy: this tool runs in your browser. Your text is not sent to any server.";
+  const isAi = tool.cat === "ai";
+  const privacy = isAi
+    ? "Privacy: your input is sent to our server and the AI provider to generate the answer. It is not shared anywhere else."
+    : (tool.cat === "image" || tool.cat === "pdf")
+      ? "Privacy: this tool runs in your browser. Your files are not uploaded to any server."
+      : "Privacy: this tool runs in your browser. Your text is not sent to any server.";
+  const aiGateHtml = isAi ? `<div id="aiGate" class="notice" hidden><p>Please log in to use the AI tools.</p><p><a href="/#account">Log in or register</a></p><p class="small">AI tools need an account because each account gets 5 free AI requests per day.</p></div>` : "";
+  const quotaHtml = isAi ? `<p id="quotaLine" class="small"></p>` : "";
+  const saveBtnHtml = isAi ? `<button type="button" id="saveBtn" class="secondary" hidden>Save result</button>` : "";
+  const savedHtml = isAi ? `<h3>Saved results</h3><div id="savedList"><p class="small">No saved results yet for this tool.</p></div>` : "";
   app.innerHTML = `<p class="crumb"><a href="/">Home</a> › <a href="/tools.html">All Tools</a> › <a href="/tools.html?cat=${tool.cat}">${esc(cat.name)}</a> › ${esc(tool.name)}</p>
   <div class="tool-head"><span class="tool-icon cat-${tool.cat}" aria-hidden="true">${esc(tool.icon)}</span><div><h1>${esc(tool.name)}</h1><p>${esc(tool.desc)}</p></div></div>
-  <p class="small">Free to use. No account needed for this tool.</p>
+  <p class="small">${isAi ? "Requires login. 5 free AI requests per day." : "Free to use. No account needed for this tool."}</p>
+  ${quotaHtml}
+  ${aiGateHtml}
   <div class="toolbox" id="toolForm">${toolFormHtml(slug)}</div>
-  <div class="toolbox"><div class="btn-row"><button type="button" id="copyBtn" class="secondary">Copy result</button><button type="button" id="downloadBtn" class="secondary">Download result (.txt)</button><button type="button" id="resetBtn" class="secondary">Reset</button></div>
+  <div class="toolbox"><div class="btn-row"><button type="button" id="copyBtn" class="secondary">Copy result</button><button type="button" id="downloadBtn" class="secondary">Download result (.txt)</button><button type="button" id="resetBtn" class="secondary">Reset</button>${saveBtnHtml}</div>
   <p id="toolErr" class="error"></p><p id="toolMsg" class="small"></p><div class="result" id="result" role="status"></div>
+  ${savedHtml}
   <p class="small">${esc(privacy)}</p>
   <h3>FAQ</h3><p>${esc(tool.faq)}</p>
   <h3>Related tools</h3><div class="grid">${related.map(toolCard).join("")}</div></div>`;

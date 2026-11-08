@@ -35,8 +35,19 @@ img.preview{max-width:100%;border:1px solid rgba(129,140,248,.25);border-radius:
 .cat-developer .tool-icon{background:linear-gradient(135deg,#38bdf8,#0284c7)}
 .cat-business .tool-icon{background:linear-gradient(135deg,#4ade80,#15803d)}
 .cat-learning .tool-icon{background:linear-gradient(135deg,#ec4899,#be185d)}
+.cat-ai .tool-icon{background:linear-gradient(135deg,#818cf8,#4f46e5)}
+.tool-icon.cat-ai{background:linear-gradient(135deg,#818cf8,#4f46e5)}
+.cat-ai .cat-badge{background:#312e81;color:#c7d2fe}
 .flash-card{margin:8px 0}
 .nav{flex-wrap:wrap}
+
+/* --- AI tools: quota line + saved results --- */
+#quotaLine{font-weight:600;color:#c7d2fe}
+#savedList .saved-item{background:rgba(7,11,26,.6);border:1px solid rgba(129,140,248,.25);border-radius:10px;padding:12px 14px;margin:10px 0}
+#savedList .saved-item p{margin:4px 0;color:#cbd5e1}
+#savedList .saved-item .small{color:#94a3b8}
+#aiGate p{margin:6px 0}
+#aiGate a{color:#a5b4fc}
 
 /* --- legal pages --- */
 .page h1{font-size:30px;letter-spacing:-.3px;margin:24px 0 8px}
