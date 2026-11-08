@@ -40,6 +40,7 @@ app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 app.use('/', require('./routes/health'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/exammate', require('./routes/exammate'));
+app.use('/api/ai', require('./routes/ai'));
 app.use('/api/admin', require('./routes/admin'));
 // Public frontend (static) — no admin link in the public site.
 app.use(express.static(path.join(__dirname, '..', 'frontend', 'public')));
