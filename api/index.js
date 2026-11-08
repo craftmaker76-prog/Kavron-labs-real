@@ -23895,10 +23895,12 @@ var require_env = __commonJS({
       cohereModel: (process.env.COHERE_MODEL || "command-a-plus-05-2026").trim(),
       iteracomputeModel: (process.env.ITERACOMPUTE_MODEL || "qwen/qwen3.8-27b").trim(),
       pollinationsModel: (process.env.POLLINATIONS_MODEL || "openai").trim(),
-      cloudflareModel: (process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-3.1-8b-instruct").trim(),
+      cloudflareModel: (process.env.CLOUDFLARE_MODEL || "@cf/meta/llama-4-scout-17b-16e-instruct").trim(),
       nvidiaModel: (process.env.NVIDIA_MODEL || "meta/llama-3.1-8b-instruct").trim(),
       museModel: (process.env.MUSE_MODEL || "muse-wonder-1.0").trim(),
       exammateDailyCap: num(process.env.EXAMMATE_DAILY_CAP_PER_USER, 20),
+      // Hissa 1 AI tools: free AI requests per user per day (UTC date).
+      aiDailyCap: num(process.env.AI_DAILY_CAP_PER_USER, 5),
       exammateMonthlyTokenCap: num(process.env.EXAMMATE_MONTHLY_TOKEN_CAP, 1e6),
       loginMaxFailed: num(process.env.LOGIN_MAX_FAILED, 5),
       loginLockMinutes: num(process.env.LOGIN_LOCK_MINUTES, 15)
@@ -48982,7 +48984,7 @@ var require_registry = __commonJS({
       // an env var (CLOUDFLARE_ACCOUNT_ID), never a panel field. Free tier is
       // 10,000 Neurons/day (compute units, not a question cap) — dailyLimit
       // stays null, never an invented question cap.
-      { id: "cloudflare", name: "Cloudflare Workers AI", wired: true, envKey: "CLOUDFLARE_API_TOKEN", dailyLimit: null, limitPeriod: null, limitNote: "OpenAI-compatible /ai/v1, @cf/meta/llama-3.1-8b-instruct, 10,000 Neurons/day free" },
+      { id: "cloudflare", name: "Cloudflare Workers AI", wired: true, envKey: "CLOUDFLARE_API_TOKEN", dailyLimit: null, limitPeriod: null, limitNote: "OpenAI-compatible /ai/v1, @cf/meta/llama-4-scout-17b-16e-instruct, 10,000 Neurons/day free" },
       // NVIDIA NIM: free prototyping credits (trial-style, depletes) on
       // build.nvidia.com; no card for the key. No daily question cap known.
       { id: "nvidia", name: "NVIDIA NIM", wired: true, envKey: "NVIDIA_API_KEY", dailyLimit: null, limitPeriod: null, limitNote: "Free prototyping credits, meta/llama-3.1-8b-instruct, trial terms" },
@@ -49326,6 +49328,304 @@ var require_exammate = __commonJS({
   }
 });
 
+// kavron-labs/backend/db/aiToolsSchema.js
+var require_aiToolsSchema = __commonJS({
+  "kavron-labs/backend/db/aiToolsSchema.js"(exports2, module2) {
+    var { getClient } = require_client4();
+    var TABLES_SQL = `
+CREATE TABLE IF NOT EXISTS ai_tool_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  tool TEXT NOT NULL,
+  provider TEXT,
+  tokens_used INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS ai_saved_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  tool TEXT NOT NULL,
+  input TEXT NOT NULL,
+  output_html TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ai_tool_usage_user_date ON ai_tool_usage(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_tool_usage_provider_date ON ai_tool_usage(provider, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_saved_user ON ai_saved_results(user_id, created_at);
+`;
+    var ready = null;
+    async function ensureAiToolsSchema() {
+      if (ready) return ready;
+      ready = (async () => {
+        const c = getClient();
+        await c.executeMultiple(TABLES_SQL);
+      })();
+      ready.catch(() => {
+        ready = null;
+      });
+      return ready;
+    }
+    module2.exports = { ensureAiToolsSchema };
+  }
+});
+
+// kavron-labs/backend/routes/ai.js
+var require_ai = __commonJS({
+  "kavron-labs/backend/routes/ai.js"(exports2, module2) {
+    var express = require_express2();
+    var router = express.Router();
+    var config = require_env();
+    var { getClient } = require_client4();
+    var { requireAuth } = require_auth2();
+    var { csrfProtect } = require_csrf();
+    var { dbRateLimit } = require_rateLimit();
+    var { cleanText } = require_validators();
+    var { aiTextToSafeHtml, sanitizeAiOutput } = require_sanitize();
+    var { askWithFallback } = require_providers();
+    var { ensurePanelSchema } = require_panelSchema();
+    var { ensureAiToolsSchema } = require_aiToolsSchema();
+    var { resolveProviderKeys } = require_keyResolver();
+    var { recordAttempt, shouldWarn80 } = require_providerEvents();
+    var { createNotification } = require_notifications();
+    var { getProvider } = require_registry();
+    var { getProviderStates, findNextProvider, shouldNotifyLimitHit } = require_providerLimits();
+    var AI_TOOLS = ["ai-text-generator", "ai-caption-generator", "ai-product-description", "ai-email-writer"];
+    var AI_MAX_INPUT = 2e3;
+    var AI_MAX_SAVED_HTML = 1e5;
+    var AI_SAVED_CAP = 50;
+    var AI_PROMPTS = {
+      "ai-text-generator": "You are a helpful writing assistant. Write clear, useful text based on the user's input. Do not invent facts, prices, or statistics. Answer in the same language and script as the user's input.",
+      "ai-caption-generator": "You write short, engaging social media captions based on the user's input. Keep them natural, no fake claims, no invented statistics. Answer in the same language and script as the user's input.",
+      "ai-product-description": "You write honest product descriptions from the details the user gives. Do not invent features, prices, or guarantees the user did not provide. Answer in the same language and script as the user's input.",
+      "ai-email-writer": "You write professional, polite emails based on the user's input. Do not invent commitments, dates, or names the user did not provide. Answer in the same language and script as the user's input."
+    };
+    async function dailyUsage(userId) {
+      const c = getClient();
+      const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+      const r = await c.execute({ sql: "SELECT COUNT(*) AS n FROM ai_tool_usage WHERE user_id = ? AND substr(created_at,1,10) = ?", args: [userId, today] });
+      return Number(r.rows[0].n);
+    }
+    async function monthlyTokens() {
+      const c = getClient();
+      const month = (/* @__PURE__ */ new Date()).toISOString().slice(0, 7);
+      const r = await c.execute({ sql: "SELECT COALESCE(SUM(tokens_used),0) AS t FROM ai_usage WHERE substr(created_at,1,7) = ?", args: [month] });
+      return Number(r.rows[0].t);
+    }
+    async function combinedTodayCounts(states) {
+      const counts = {};
+      for (const id of Object.keys(states)) counts[id] = states[id].today;
+      try {
+        const c = getClient();
+        const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        const r = await c.execute({ sql: "SELECT provider, COUNT(*) AS n FROM ai_tool_usage WHERE substr(created_at,1,10) = ? GROUP BY provider", args: [today] });
+        for (const row of r.rows) counts[row.provider] = (counts[row.provider] || 0) + Number(row.n);
+      } catch (e) {
+        console.error("ai tool usage count failed:", e.message);
+      }
+      return counts;
+    }
+    function buildCombinedStates(states, combinedCounts) {
+      const out = {};
+      for (const id of Object.keys(states)) {
+        const s = states[id];
+        const today = combinedCounts[id] || 0;
+        out[id] = {
+          ...s,
+          today,
+          autoOff: s.enabled && s.effectiveLimit !== null && s.effectiveLimit !== void 0 && today >= s.effectiveLimit
+        };
+      }
+      return out;
+    }
+    async function providerTodayCount(c, provider, today) {
+      const h = await c.execute({ sql: "SELECT COUNT(*) AS n FROM exammate_history WHERE provider = ? AND substr(created_at,1,10) = ?", args: [provider, today] });
+      const a = await c.execute({ sql: "SELECT COUNT(*) AS n FROM ai_tool_usage WHERE provider = ? AND substr(created_at,1,10) = ?", args: [provider, today] });
+      return Number(h.rows[0].n) + Number(a.rows[0].n);
+    }
+    var aiRateLimit = dbRateLimit({ limit: 30, windowMinutes: 60, keyFn: (req) => "ai:" + req.user.userId });
+    router.post("/generate", requireAuth, csrfProtect, aiRateLimit, async (req, res, next) => {
+      try {
+        await ensureAiToolsSchema();
+        await ensurePanelSchema();
+        const tool = cleanText(req.body && req.body.tool);
+        const input = cleanText(req.body && req.body.input);
+        if (!AI_TOOLS.includes(tool)) {
+          return res.status(400).json({ error: "Please choose a valid AI tool." });
+        }
+        if (!input || input.length > AI_MAX_INPUT) {
+          return res.status(400).json({ error: `Input must be 1 to ${AI_MAX_INPUT} characters.` });
+        }
+        const limit = config.aiDailyCap;
+        const used = await dailyUsage(req.user.userId);
+        if (used >= limit) {
+          return res.status(429).json({ error: `You have used all ${limit} free AI requests for today. Please try again tomorrow.`, remaining: 0, limit });
+        }
+        if (await monthlyTokens() >= config.exammateMonthlyTokenCap) {
+          return res.status(503).json({ error: "AI service is temporarily unavailable because the monthly AI budget has been reached." });
+        }
+        const { keys: resolvedKeys, enabled } = await resolveProviderKeys();
+        const states = await getProviderStates(getClient());
+        const limits = {};
+        for (const id of Object.keys(states)) limits[id] = states[id].effectiveLimit;
+        const todayCounts = await combinedTodayCounts(states);
+        const combinedStates = buildCombinedStates(states, todayCounts);
+        if (!resolvedKeys.gemini && !resolvedKeys.groq && !resolvedKeys.openrouter && !resolvedKeys.mistral && !resolvedKeys.cohere && !resolvedKeys.iteracompute && !resolvedKeys.pollinations && !resolvedKeys.cloudflare && !resolvedKeys.nvidia && !resolvedKeys.muse) {
+          return res.status(503).json({ error: "AI service is not configured yet. Please try again later." });
+        }
+        const prompt = AI_PROMPTS[tool] + "\n\n" + input;
+        const onAttempt = (att) => {
+          recordAttempt(getClient(), att).catch((e) => console.error("provider event record failed:", e.message));
+        };
+        const result = await askWithFallback({
+          prompt,
+          config: { ...config, geminiKey: resolvedKeys.gemini, groqKey: resolvedKeys.groq, openrouterKey: resolvedKeys.openrouter, mistralKey: resolvedKeys.mistral, cohereKey: resolvedKeys.cohere, iteracomputeKey: resolvedKeys.iteracompute, pollinationsKey: resolvedKeys.pollinations, cloudflareKey: resolvedKeys.cloudflare, nvidiaKey: resolvedKeys.nvidia, museKey: resolvedKeys.muse },
+          enabled,
+          onAttempt,
+          limits,
+          todayCounts
+        });
+        if (!result) {
+          const anyFreeEligible = ["gemini", "groq", "openrouter", "mistral", "cohere", "iteracompute", "pollinations", "cloudflare", "nvidia"].some((id) => {
+            const entry = getProvider(id);
+            const s = combinedStates[id];
+            return entry && entry.wired && s && s.enabled && resolvedKeys[id] && !s.autoOff;
+          });
+          const museAttemptable = !!(resolvedKeys.muse && enabled.muse !== false);
+          const nothingAttempted = !anyFreeEligible && !museAttemptable;
+          try {
+            await createNotification(getClient(), {
+              // DISTINCT type from ExamMate's 'all_failed', so the deduped
+              // unread row for one never clobbers the other's.
+              type: "ai_all_failed",
+              severity: "critical",
+              title: "AI tools ne jawab nahi diya",
+              message: nothingAttempted ? "Sab providers band hain ya unki daily limit poori ho gayi hai. Panel me kisi provider ko ON karo ya uski limit barhao." : "Koi provider jawab nahi de saka. Sab providers ki keys aur haalat panel me check karo.",
+              provider: null,
+              action: null
+            });
+          } catch (e) {
+            console.error("ai all-failed notification failed:", e.message);
+          }
+          return res.status(502).json({ error: "AI service is temporarily unavailable. Please try again in a little while." });
+        }
+        console.log("ai tool answered by", result.provider, "tool", tool);
+        const raw = result.text;
+        const safeHtml = aiTextToSafeHtml(raw);
+        const tokens = Math.ceil(raw.length / 4);
+        const c = getClient();
+        await c.execute({ sql: "INSERT INTO ai_tool_usage (user_id, tool, provider, tokens_used) VALUES (?,?,?,?)", args: [req.user.userId, tool, result.provider, tokens] });
+        await c.execute({ sql: "INSERT INTO ai_usage (user_id, tokens_used, provider) VALUES (?,?,?)", args: [req.user.userId, tokens, result.provider] });
+        try {
+          const entry = getProvider(result.provider);
+          const st = combinedStates[result.provider];
+          const eff = st ? st.effectiveLimit : entry ? entry.dailyLimit : null;
+          if (entry && eff !== null && eff !== void 0) {
+            const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+            const n = await providerTodayCount(c, result.provider, today);
+            if (shouldWarn80(n, eff)) {
+              await createNotification(c, {
+                type: "usage_warning",
+                severity: "warning",
+                title: `${entry.name} ki limit 80% poori`,
+                message: `${entry.name} ki aaj ki limit 80% poori ho gayi hai (${n}/${eff}). Nayi key tayyar rakho.`,
+                provider: result.provider,
+                action: result.provider
+              });
+            }
+            if (shouldNotifyLimitHit(n, eff)) {
+              const next2 = findNextProvider(combinedStates, resolvedKeys, result.provider);
+              await createNotification(c, {
+                type: "provider_limit",
+                severity: "warning",
+                title: `${entry.name} ki daily limit poori`,
+                message: `${entry.name} ki aaj ki limit poori ho gayi hai (${n}/${eff}). Agla provider: ${next2 ? next2.name + " jawab dega" : "koi nahi bacha \u2014 sab band ya limit par hain"}.`,
+                provider: result.provider,
+                action: result.provider
+              });
+            }
+          }
+        } catch (e) {
+          console.error("usage warning failed:", e.message);
+        }
+        const usedNow = await dailyUsage(req.user.userId);
+        res.json({ answerHtml: safeHtml, remaining: Math.max(0, limit - usedNow), used: usedNow, limit, provider: result.provider });
+      } catch (e) {
+        next(e);
+      }
+    });
+    router.get("/usage", requireAuth, async (req, res, next) => {
+      try {
+        await ensureAiToolsSchema();
+        await ensurePanelSchema();
+        const limit = config.aiDailyCap;
+        const used = await dailyUsage(req.user.userId);
+        res.json({ used, remaining: Math.max(0, limit - used), limit });
+      } catch (e) {
+        next(e);
+      }
+    });
+    router.get("/saved", requireAuth, async (req, res, next) => {
+      try {
+        await ensureAiToolsSchema();
+        await ensurePanelSchema();
+        const c = getClient();
+        const r = await c.execute({ sql: "SELECT id, tool, input, output_html AS outputHtml, created_at FROM ai_saved_results WHERE user_id = ? ORDER BY id DESC LIMIT 50", args: [req.user.userId] });
+        res.json({ items: r.rows });
+      } catch (e) {
+        next(e);
+      }
+    });
+    router.post("/save", requireAuth, csrfProtect, async (req, res, next) => {
+      try {
+        await ensureAiToolsSchema();
+        await ensurePanelSchema();
+        const tool = cleanText(req.body && req.body.tool);
+        const input = cleanText(req.body && req.body.input);
+        const outputHtml = req.body && req.body.outputHtml;
+        if (!AI_TOOLS.includes(tool)) {
+          return res.status(400).json({ error: "Please choose a valid AI tool." });
+        }
+        if (!input || input.length > AI_MAX_INPUT) {
+          return res.status(400).json({ error: `Input must be 1 to ${AI_MAX_INPUT} characters.` });
+        }
+        if (typeof outputHtml !== "string" || outputHtml.length > AI_MAX_SAVED_HTML) {
+          return res.status(400).json({ error: `Saved output must be at most ${AI_MAX_SAVED_HTML} characters.` });
+        }
+        const c = getClient();
+        const count = await c.execute({ sql: "SELECT COUNT(*) AS n FROM ai_saved_results WHERE user_id = ?", args: [req.user.userId] });
+        if (Number(count.rows[0].n) >= AI_SAVED_CAP) {
+          return res.status(429).json({ error: `Saved items limit reached (${AI_SAVED_CAP}). Delete an old item first.` });
+        }
+        const cleanHtml = sanitizeAiOutput(outputHtml);
+        const ins = await c.execute({ sql: "INSERT INTO ai_saved_results (user_id, tool, input, output_html) VALUES (?,?,?,?)", args: [req.user.userId, tool, input, cleanHtml] });
+        const row = await c.execute({ sql: "SELECT id, tool, created_at FROM ai_saved_results WHERE id = ?", args: [Number(ins.lastInsertRowid)] });
+        res.status(201).json({ item: row.rows[0] });
+      } catch (e) {
+        next(e);
+      }
+    });
+    router.delete("/saved/:id", requireAuth, csrfProtect, async (req, res, next) => {
+      try {
+        await ensureAiToolsSchema();
+        await ensurePanelSchema();
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+          return res.status(404).json({ error: "Saved item not found." });
+        }
+        const c = getClient();
+        const r = await c.execute({ sql: "DELETE FROM ai_saved_results WHERE id = ? AND user_id = ?", args: [id, req.user.userId] });
+        if (!r.rowsAffected) {
+          return res.status(404).json({ error: "Saved item not found." });
+        }
+        res.json({ ok: true });
+      } catch (e) {
+        next(e);
+      }
+    });
+    module2.exports = router;
+  }
+});
+
 // kavron-labs/backend/routes/admin.js
 var require_admin = __commonJS({
   "kavron-labs/backend/routes/admin.js"(exports2, module2) {
@@ -49570,6 +49870,7 @@ var require_app = __commonJS({
     app2.use("/", require_health());
     app2.use("/api/auth", require_auth3());
     app2.use("/api/exammate", require_exammate());
+    app2.use("/api/ai", require_ai());
     app2.use("/api/admin", require_admin());
     app2.use(express.static(path.join(__dirname, "..", "frontend", "public")));
     app2.use(notFound);
