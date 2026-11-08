@@ -41,6 +41,8 @@ module.exports = {
   exammateDailyCap: num(process.env.EXAMMATE_DAILY_CAP_PER_USER, 20),
   // Hissa 1 AI tools: free AI requests per user per day (UTC date).
   aiDailyCap: num(process.env.AI_DAILY_CAP_PER_USER, 5),
+  // Hissa 3 Protect/Unlock PDF: free uses per user per day (UTC date).
+  pdfDailyCap: num(process.env.PDF_DAILY_CAP_PER_USER, 10),
   exammateMonthlyTokenCap: num(process.env.EXAMMATE_MONTHLY_TOKEN_CAP, 1000000),
   loginMaxFailed: num(process.env.LOGIN_MAX_FAILED, 5),
   loginLockMinutes: num(process.env.LOGIN_LOCK_MINUTES, 15),
