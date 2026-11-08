@@ -555,15 +555,17 @@ function pageTool(slug) {
   const pdfTool = pdfToolBySlug(slug);
   if (pdfTool) {
     const cat = CATS.pdf;
+    const isServerPdf = slug === "protect-pdf" || slug === "unlock-pdf";
     document.title = `${pdfTool.name} — Kavron Labs`;
     const related = PDF_TOOLS.filter((t) => t.section === pdfTool.section && t.slug !== slug).slice(0, 6);
     app.innerHTML = `<p class="crumb"><a href="/">Home</a> › <a href="/tools.html">All Tools</a> › <a href="/tools.html?cat=pdf">${esc(cat.name)}</a> › ${esc(pdfTool.name)}</p>
   <div class="tool-head"><span class="tool-icon cat-pdf" aria-hidden="true">${esc(pdfTool.icon)}</span><div><h1>${esc(pdfTool.name)}</h1><p>${esc(pdfTool.desc)}</p><p><span class="status ${statusClass(pdfTool)}">${statusLabel(pdfTool)}</span></p></div></div>
-  <p class="small">Free to use. No account needed for this tool.</p>
+  <p class="small">${isServerPdf ? "Requires login. 10 free uses per day." : "Free to use. No account needed for this tool."}</p>
+  ${isServerPdf ? `<p id="quotaLine" class="small"></p><div id="pdfGate" class="notice" hidden><p>Please log in to use this tool.</p><p><a href="/#account">Log in or register</a></p><p class="small">Protect and Unlock need an account because each account gets 10 free uses per day.</p></div>` : ""}
   <div class="toolbox" id="toolForm">${pdfToolFormHtml(slug)}</div>
   <div class="toolbox"><div class="btn-row"><button type="button" id="copyBtn" class="secondary">Copy result</button><button type="button" id="downloadBtn" class="secondary">Download result (.txt)</button><button type="button" id="resetBtn" class="secondary">Reset</button></div>
   <p id="toolErr" class="error"></p><p id="toolMsg" class="small"></p><div class="result" id="result" role="status"></div>
-  <p class="small">Privacy: this tool runs in your browser. Your files are not uploaded to any server.</p>
+  <p class="small">${isServerPdf ? "Privacy: your file is sent to our server over HTTPS, processed in memory, and never stored. Your password is never stored or logged." : "Privacy: this tool runs in your browser. Your files are not uploaded to any server."}</p>
   <h3>FAQ</h3><p>${esc(pdfTool.faq)}</p>
   <h3>Related tools</h3><div class="grid">${related.map(pdfCard).join("")}</div></div>`;
     bindPdfTool(slug);

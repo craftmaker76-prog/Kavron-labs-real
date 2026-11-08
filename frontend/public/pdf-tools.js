@@ -1,8 +1,11 @@
-// Kavron Labs PDF tools (tools.html) — frontend-only.
-// Every PDF tool here runs fully in the browser using pdf-lib and pdf.js,
+// Kavron Labs PDF tools (tools.html) — mostly frontend-only.
+// Most PDF tools run fully in the browser using pdf-lib and pdf.js,
 // both vendored locally (pdf-lib.min.js, pdf.min.js, pdf.worker.min.js).
-// There is no network call of any kind in this file: no login, no AI,
-// no saved results, no pricing, no fetch, no CDN.
+// Two tools need the server: Protect PDF and Unlock PDF. They call
+// same-origin /api/pdf/* only, need a login, and send the X-CSRF-Token
+// from /api/auth/me, exactly like the AI tools. No other network call
+// exists in this file: no AI, no pricing, no fetch to any other origin,
+// no CDN.
 // Loaded as an external module on purpose: the site CSP allows scripts
 // only from the site itself ('self'), so no inline scripts and no inline
 // event attributes are used anywhere in the pack.
@@ -157,8 +160,8 @@ export const PDF_TOOLS = [
   { slug: "fill-pdf-forms", name: "Fill PDF Forms", section: "office", icon: "🖊️", desc: "Fill in the fields of a PDF form and save the filled copy.", keywords: "fill form fields acroform", status: "partial", limit: "Works with PDFs that already have fillable form fields. Plain PDFs without fields cannot be filled this way.", faq: "Text fields, tick boxes and dropdowns are supported." },
   { slug: "add-page-numbers", name: "Add Page Numbers", section: "office", icon: "#️⃣", desc: "Add page numbers to every page of a PDF.", keywords: "page numbers numbering footer", status: "full", faq: "Choose the position, the starting number and the format." },
   { slug: "add-watermark-pdf", name: "Add Watermark to PDF", section: "office", icon: "💧", desc: "Add a text watermark (for example CONFIDENTIAL) to every page.", keywords: "watermark stamp confidential draft", status: "full", faq: "Choose the text, size, colour and transparency." },
-  { slug: "protect-pdf", name: "Protect PDF with Password", section: "office", icon: "🔒", desc: "Lock a PDF with a password so only people with the password can open it.", keywords: "protect password lock encrypt secure", status: "interface", serverNote: "Password encryption cannot be done in the browser — it needs server processing, which arrives in the next step. This page is ready — upload, options and download will work once the server step is live.", faq: "Server processing arrives in the next step." },
-  { slug: "unlock-pdf", name: "Unlock PDF", section: "office", icon: "🔓", desc: "Remove the password from a PDF you own.", keywords: "unlock remove password decrypt open", status: "interface", serverNote: "Removing a password needs server processing, which arrives in the next step. This page is ready — upload, options and download will work once the server step is live.", faq: "Server processing arrives in the next step." },
+  { slug: "protect-pdf", name: "Protect PDF with Password", section: "office", icon: "🔒", desc: "Lock a PDF with a password so only people with the password can open it.", keywords: "protect password lock encrypt secure", status: "full", limit: "Requires login. 10 free uses per day. Files up to 4 MB — the server cannot take larger files yet.", faq: "Requires login. 10 free uses per day. Your file is processed in memory on the server and never stored." },
+  { slug: "unlock-pdf", name: "Unlock PDF", section: "office", icon: "🔓", desc: "Remove the password from a PDF you own.", keywords: "unlock remove password decrypt open", status: "full", limit: "Requires login. 10 free uses per day. Files up to 4 MB — the server cannot take larger files yet.", faq: "Requires login. 10 free uses per day. Your file is processed in memory on the server and never stored." },
   { slug: "rotate-pdf", name: "Rotate PDF", section: "office", icon: "🔄", desc: "Rotate pages in a PDF by 90, 180 or 270 degrees.", keywords: "rotate turn pages orientation", status: "full", faq: "Rotate all pages or only the pages you list." },
   { slug: "compare-pdf", name: "Compare PDF", section: "office", icon: "⚖️", desc: "Compare two PDFs and see which text changed.", keywords: "compare diff difference two files", status: "partial", limit: "This compares the text of the two files, page by page. It does not compare images or layout.", faq: "The result lists lines that differ, for the first 20 differing lines." },
   { slug: "ocr-pdf", name: "OCR PDF", section: "office", icon: "🔍", desc: "Turn a scanned PDF into searchable, selectable text.", keywords: "ocr scanned searchable text recognition", status: "interface", serverNote: "Reading text from scanned images needs OCR, which needs server processing — it arrives in the next step. This page is ready — upload, options and download will work once the server step is live.", faq: "Server processing arrives in the next step." },
@@ -243,8 +246,8 @@ export function pdfToolFormHtml(slug) {
     case "fill-pdf-forms": return head + howHtml(["Add a PDF that has fillable form fields.", "Click Load form fields — the fields appear below.", "Fill them in, then click Download filled PDF."]) + pdfSingle() + runBtn("Load form fields") + `<div id="fieldList"></div><button type="button" id="fillBtn" class="secondary" hidden>Download filled PDF</button>`;
     case "add-page-numbers": return head + howHtml(["Add one PDF file.", "Choose the position, starting number and format.", "Click Add page numbers, then download the file."]) + pdfSingle() + selectField("mode", "Position", [{ value: "bottom-center", label: "Bottom centre" }, { value: "bottom-right", label: "Bottom right" }, { value: "bottom-left", label: "Bottom left" }, { value: "top-right", label: "Top right" }], "bottom-center") + numField("in", "Start numbering from", 1, 1) + selectField("format", "Format", [{ value: "n", label: "1, 2, 3…" }, { value: "page-n", label: "Page 1, Page 2…" }, { value: "page-n-of-m", label: "Page 1 of 5…" }], "page-n") + runBtn("Add page numbers");
     case "add-watermark-pdf": return head + howHtml(["Add one PDF file.", "Enter the watermark text and choose its look.", "Click Add watermark, then download the file."]) + pdfSingle() + textField("in", "Watermark text", "CONFIDENTIAL", "CONFIDENTIAL") + `<div class="row">${numField("size", "Font size", 60, 12, 120)}${numField("opacity", "Transparency % (0–100)", 25, 0, 100)}</div>` + selectField("mode", "Angle", [{ value: "45", label: "Diagonal (45°)" }, { value: "0", label: "Straight (0°)" }, { value: "-45", label: "Diagonal (-45°)" }], "45") + selectField("color", "Colour", [{ value: "grey", label: "Grey" }, { value: "red", label: "Red" }, { value: "blue", label: "Blue" }], "grey") + runBtn("Add watermark");
-    case "protect-pdf": return head + howHtml(["Add one PDF file.", "Choose a password and confirm it.", "When server processing is live, the protected PDF will download here."]) + pdfSingle() + `<label>Password <input id="in" type="password" autocomplete="new-password"></label><label>Confirm password <input id="in2" type="password" autocomplete="new-password"></label><p class="small">Your password is never sent anywhere — it is only used when the server step runs.</p>`;
-    case "unlock-pdf": return head + howHtml(["Add one protected PDF file.", "Enter its password.", "When server processing is live, the unlocked PDF will download here."]) + pdfSingle() + `<label>Current password <input id="in" type="password" autocomplete="current-password"></label><p class="small">Your password is never sent anywhere — it is only used when the server step runs.</p>`;
+    case "protect-pdf": return head + howHtml(["Add one PDF file (up to 4 MB).", "Choose a password and confirm it.", "Click Protect PDF, then download the protected file."]) + pdfSingle("PDF file (up to 4 MB — server limit)") + `<label>Password <input id="in" type="password" autocomplete="new-password" maxlength="128"></label><label>Confirm password <input id="in2" type="password" autocomplete="new-password" maxlength="128"></label><p class="small">Your file is processed in memory on the server and never stored. Your password is sent over HTTPS only for this file, and is never stored or logged.</p>` + runBtn("Protect PDF");
+    case "unlock-pdf": return head + howHtml(["Add one protected PDF file (up to 4 MB).", "Enter its password.", "Click Unlock PDF, then download the clean file."]) + pdfSingle("PDF file (up to 4 MB — server limit)") + `<label>Current password <input id="in" type="password" autocomplete="current-password" maxlength="128"></label><p class="small">Your file is processed in memory on the server and never stored. Your password is sent over HTTPS only for this file, and is never stored or logged.</p>` + runBtn("Unlock PDF");
     case "rotate-pdf": return head + howHtml(["Add one PDF file.", "Choose which pages to rotate and by how much.", "Click Rotate PDF, then download the file."]) + pdfSingle() + selectField("mode", "Pages", [{ value: "all", label: "All pages" }, { value: "listed", label: "Only listed pages" }], "all") + textField("in", "Pages to rotate (for example 1, 3-5)", "1, 3-5") + selectField("angle", "Rotation", [{ value: "90", label: "90° clockwise" }, { value: "180", label: "180°" }, { value: "270", label: "270° clockwise" }], "90") + runBtn("Rotate PDF");
     case "compare-pdf": return head + howHtml(["Add the first PDF, then the second PDF.", "Click Compare PDFs.", "The result lists the lines that differ, page by page."]) + uploadField("application/pdf", false, "First PDF file", { dz: "dropzone", input: "fileIn", list: "fileList", browse: "browseBtn" }) + uploadField("application/pdf", false, "Second PDF file", { dz: "dropzone2", input: "fileIn2", list: "fileList2", browse: "browseBtn2" }) + runBtn("Compare PDFs");
     case "ocr-pdf": return head + howHtml(["Add one scanned PDF file.", "Choose the language of the text.", "When server processing is live, the searchable PDF will download here."]) + pdfSingle() + selectField("mode", "Text language", [{ value: "en", label: "English" }, { value: "ur", label: "Urdu" }, { value: "ar", label: "Arabic" }], "en");
@@ -450,7 +453,79 @@ async function renderPageToJpg(pdfBytes, pageNum, scale, quality) {
 const COLOR_MAP = { black: [0, 0, 0], red: [0.85, 0.1, 0.1], blue: [0.1, 0.25, 0.85], green: [0.1, 0.6, 0.2], grey: [0.5, 0.5, 0.5] };
 function pdfColor(name) { const c = COLOR_MAP[name] || COLOR_MAP.black; return pdfLib().rgb(c[0], c[1], c[2]); }
 
+/* --- Server PDF tools (Protect / Unlock) ---
+   The only PDF tools that use the network: same-origin /api/pdf/*
+   only, login + CSRF, exactly like the AI tools in tools.js.
+   Files are sent over HTTPS, processed in memory on the server, and
+   never stored. Passwords are never stored or logged. */
+const SERVER_PDF_SLUGS = ["protect-pdf", "unlock-pdf"];
+const PDF_DAILY_LIMIT = 10;
+const PDF_CLIENT_MAX_BYTES = 4 * 1024 * 1024; // Vercel request limit is ~4.5 MB.
+let pdfCsrfToken = null;
+function isServerPdfTool(slug) { return SERVER_PDF_SLUGS.includes(slug); }
+async function getPdfCsrf() {
+  if (pdfCsrfToken) return pdfCsrfToken;
+  const r = await fetch("/api/auth/me", { credentials: "include" });
+  if (!r.ok) return null;
+  const me = await r.json();
+  pdfCsrfToken = me.csrfToken || null;
+  return pdfCsrfToken;
+}
+async function readJsonSafe(r) { try { return await r.json(); } catch (e) { return {}; } }
+function setPdfQuota(remaining, limit) {
+  const el = document.getElementById("quotaLine");
+  if (el && Number.isFinite(Number(remaining)) && Number.isFinite(Number(limit))) el.textContent = `${remaining} of ${limit} free uses left today`;
+}
+function showPdfGate() {
+  const gate = document.getElementById("pdfGate");
+  const form = document.getElementById("toolForm");
+  if (gate) gate.hidden = false;
+  if (form) form.hidden = true;
+}
+async function loadPdfUsage() {
+  const r = await fetch("/api/pdf/usage", { credentials: "include" });
+  if (r.status === 401) { showPdfGate(); return false; }
+  if (!r.ok) return false;
+  const data = await readJsonSafe(r);
+  setPdfQuota(data.remaining, data.limit);
+  return true;
+}
+function needServerPdfFile(files) {
+  const list = Array.from(files || []);
+  if (!list.length) throw new Error("Choose a PDF file first.");
+  const bad = list.find((f) => f.type !== "application/pdf" && !/\.pdf$/i.test(f.name || ""));
+  if (bad) throw new Error("Only PDF files are accepted for this tool.");
+  const big = list.find((f) => f.size > PDF_CLIENT_MAX_BYTES);
+  if (big) throw new Error("PDF files larger than 4 MB cannot be processed on the server yet. Please use a smaller file.");
+  return list[0];
+}
+async function runServerPdfTool(slug, getVal) {
+  const file = needServerPdfFile(fileListOf("fileIn"));
+  const password = getVal("in");
+  if (!password || password.length > 128) throw new Error("Enter a password of 1 to 128 characters.");
+  if (slug === "protect-pdf" && password !== getVal("in2")) throw new Error("The two passwords do not match.");
+  const token = await getPdfCsrf();
+  if (!token) { showPdfGate(); throw new Error("Please log in to use this tool."); }
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("password", password);
+  if (slug === "protect-pdf") fd.append("confirmPassword", getVal("in2"));
+  const endpoint = slug === "protect-pdf" ? "/api/pdf/protect" : "/api/pdf/unlock";
+  const r = await fetch(endpoint, { method: "POST", headers: { "X-CSRF-Token": token }, credentials: "include", body: fd });
+  if (r.status === 401) { showPdfGate(); throw new Error("Please log in to use this tool."); }
+  if (!r.ok) {
+    const data = await readJsonSafe(r);
+    throw new Error(data.error || (r.status === 429 ? "You have used all 10 free uses for today. Please try again tomorrow." : "Something went wrong. Please try again."));
+  }
+  const buf = new Uint8Array(await r.arrayBuffer());
+  const outName = (slug === "protect-pdf" ? "protected-" : "unlocked-") + file.name;
+  downloadPdfBytes(buf, outName);
+  setPdfQuota(r.headers.get("X-Pdf-Remaining"), r.headers.get("X-Pdf-Limit"));
+  setOut("result", `Done — ${outName} downloaded (${buf.length} bytes).`);
+}
+
 async function runPdfTool(slug, getVal, ctx) {
+  if (isServerPdfTool(slug)) { await runServerPdfTool(slug, getVal); return; }
   const L = pdfLib();
   const std = L.StandardFonts;
   if (slug === "merge-pdf") {
@@ -1164,6 +1239,15 @@ export function bindPdfTool(slug) {
     const fb = document.getElementById("fillBtn"); if (fb) fb.hidden = true;
   });
   const runBtn = document.getElementById("runBtn");
+  if (isServerPdfTool(slug)) {
+    // Page load: login check first (401 shows the gate), then quota.
+    (async () => {
+      let token = null;
+      try { token = await getPdfCsrf(); } catch (e) { setErr("toolErr", "Could not reach the server. Check your connection and try again."); return; }
+      if (!token) { showPdfGate(); return; }
+      try { await loadPdfUsage(); } catch (e) { setErr("toolErr", "Could not reach the server. Check your connection and try again."); }
+    })();
+  }
   if (!runBtn) return; // interface-only tools have no run button by design
   runBtn.addEventListener("click", async () => {
     setErr("toolErr", ""); setErr("toolMsg", ""); setOut("result", "Working…");
@@ -1183,7 +1267,7 @@ export function pdfListHtml() {
   return `<p class="crumb"><a href="/">Home</a> › <a href="/tools.html">All Tools</a> › PDF Tools</p>
   <div class="tool-head"><img class="logo" src="/logo-pdf.webp" alt="PDF Tools logo"><div><h1>PDF Tools</h1><p>42 free PDF tools in one place. Most run in your browser — no uploads, no account needed.</p></div></div>
   <div class="searchbar"><input id="toolSearch" type="search" placeholder="Search PDF tools — try “excel”, “merge”, “sign”… " aria-label="Search PDF tools"><button type="button" id="searchClear" class="secondary" hidden>Clear ×</button></div>
-  <p class="small">Free to use. <span class="status status-working">Working</span> tools run fully in your browser. <span class="status status-partial">Working*</span> tools work with the limits shown on their page. <span class="status status-soon">Coming soon</span> tools need server processing, which arrives in the next step.</p>
+  <p class="small">Free to use. <span class="status status-working">Working</span> tools run fully in your browser — except Protect PDF and Unlock PDF, which need a login and process your file on the server. <span class="status status-partial">Working*</span> tools work with the limits shown on their page. <span class="status status-soon">Coming soon</span> tools need server processing, which arrives in the next step.</p>
   <div id="pdfSections">${sections}</div>
   <p id="noMatch" class="notice" hidden>No tools match your search. Try another keyword, or clear the search to see all 42 tools.</p>`;
 }
