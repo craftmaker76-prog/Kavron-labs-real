@@ -39,6 +39,8 @@ module.exports = {
   nvidiaModel: (process.env.NVIDIA_MODEL || 'meta/llama-3.1-8b-instruct').trim(),
   museModel: (process.env.MUSE_MODEL || 'muse-wonder-1.0').trim(),
   exammateDailyCap: num(process.env.EXAMMATE_DAILY_CAP_PER_USER, 20),
+  // Hissa 1 AI tools: free AI requests per user per day (UTC date).
+  aiDailyCap: num(process.env.AI_DAILY_CAP_PER_USER, 5),
   exammateMonthlyTokenCap: num(process.env.EXAMMATE_MONTHLY_TOKEN_CAP, 1000000),
   loginMaxFailed: num(process.env.LOGIN_MAX_FAILED, 5),
   loginLockMinutes: num(process.env.LOGIN_LOCK_MINUTES, 15),
