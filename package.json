@@ -1,14 +1,16 @@
 {
   "dependencies": {
+    "@cantoo/pdf-lib": "2.11.1",
     "@libsql/client": "^0.15.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "helmet": "^8.0.0",
+    "multer": "2.0.1",
     "sanitize-html": "^2.13.0"
   },
-  "description": "Kavron Labs \u2014 real tools website. Phase 1: portable Express backend, Turso/libSQL, secure admin auth, ExamMate server-side caps.",
+  "description": "Kavron Labs — real tools website. Phase 1: portable Express backend, Turso/libSQL, secure admin auth, ExamMate server-side caps.",
   "devDependencies": {
     "supertest": "^7.0.0"
   },
