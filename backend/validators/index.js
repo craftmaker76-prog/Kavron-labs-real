@@ -5,4 +5,7 @@ function cleanText(v) { return typeof v === 'string' ? v.trim() : ''; }
 // ExamMate limits (Phase 1): question max 2000 chars, photo handled separately.
 const EXAMMATE_MAX_QUESTION = 2000;
 const EXAMMATE_MAX_SUBJECT = 100;
-module.exports = { isEmail, isString, cleanText, EXAMMATE_MAX_QUESTION, EXAMMATE_MAX_SUBJECT };
+// ExamMate Vision: max DECODED image size (2 MB). The data URL itself is
+// ~33% larger as base64; the 3mb JSON parser in app.js covers that.
+const EXAMMATE_MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+module.exports = { isEmail, isString, cleanText, EXAMMATE_MAX_QUESTION, EXAMMATE_MAX_SUBJECT, EXAMMATE_MAX_IMAGE_BYTES };
