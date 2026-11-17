@@ -5,7 +5,7 @@ const { getClient } = require('../db/client');
 const { requireAuth, requireOwnership } = require('../middleware/auth');
 const { csrfProtect } = require('../middleware/csrf');
 const { dbRateLimit } = require('../middleware/rateLimit');
-const { cleanText, EXAMMATE_MAX_QUESTION, EXAMMATE_MAX_SUBJECT } = require('../validators');
+const { cleanText, EXAMMATE_MAX_QUESTION, EXAMMATE_MAX_SUBJECT, EXAMMATE_MAX_IMAGE_BYTES } = require('../validators');
 const { aiTextToSafeHtml } = require('../services/exammate/sanitize');
 const { buildTutorPrompt } = require('../services/exammate/tutorPrompt');
 const { askWithFallback } = require('../services/exammate/providers');
@@ -37,7 +37,45 @@ router.post('/ask', requireAuth, csrfProtect, dbRateLimit({ limit: 30, windowMin
     const province = cleanText(req.body && req.body.province);
     const className = cleanText(req.body && req.body.className);
     const board = cleanText(req.body && req.body.board);
-    if (!question || question.length > EXAMMATE_MAX_QUESTION) {
+    // Vision: optional `image` field — a base64 data URL (JPEG/PNG/WebP,
+    // max 2 MB decoded). Image data is NEVER stored or logged: it is only
+    // forwarded to a vision provider for this ask, and history stores a
+    // "[Image attached]" marker instead (see the insert below).
+    const imageField = req.body && req.body.image;
+    let image = '';
+    if (imageField === undefined || imageField === null || imageField === '') {
+      image = '';
+    } else if (typeof imageField !== 'string') {
+      return res.status(400).json({ error: 'Image must be a JPEG, PNG, or WebP image sent as a base64 data URL.' });
+    } else {
+      image = imageField;
+    }
+    if (image) {
+      const prefix = /^data:image\/(jpeg|png|webp);base64,/.exec(image);
+      if (!prefix) {
+        return res.status(400).json({ error: 'Image must be a JPEG, PNG, or WebP image sent as a base64 data URL.' });
+      }
+      const base64 = image.slice(prefix[0].length);
+      if (!base64 || base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+        return res.status(400).json({ error: 'Image data is not valid base64.' });
+      }
+      let decodedSize;
+      try {
+        decodedSize = Buffer.from(base64, 'base64').length;
+      } catch (e) {
+        return res.status(400).json({ error: 'Image data is not valid base64.' });
+      }
+      if (decodedSize === 0) {
+        return res.status(400).json({ error: 'Image data is not valid base64.' });
+      }
+      if (decodedSize > EXAMMATE_MAX_IMAGE_BYTES) {
+        return res.status(400).json({ error: 'Image is too large. Images must be 2 MB or smaller.' });
+      }
+    }
+    // At least one of question text or image is required: the question
+    // becomes optional when an image is attached, but stays capped at
+    // 2000 chars when present. The step-gate fields below stay mandatory.
+    if ((!question && !image) || question.length > EXAMMATE_MAX_QUESTION) {
       return res.status(400).json({ error: `Question must be 1 to ${EXAMMATE_MAX_QUESTION} characters.` });
     }
     // Step-by-step gate (user requirement 2026-11-03): all five fields
@@ -82,6 +120,25 @@ router.post('/ask', requireAuth, csrfProtect, dbRateLimit({ limit: 30, windowMin
       limits[id] = states[id].effectiveLimit;
       todayCounts[id] = states[id].today;
     }
+    // Vision: an image ask needs a vision-capable provider (registry
+    // visionModel) that is wired, enabled, keyed and under its daily
+    // limit. Cloudflare additionally needs its Account ID env var, or
+    // the chain would skip it. With no eligible vision provider, answer
+    // honestly WITHOUT calling the chain — text-only providers must
+    // never receive an image ask.
+    if (image) {
+      const visionEligible = ['groq', 'cloudflare'].some((id) => {
+        const entry = getProvider(id);
+        const s = states[id];
+        if (!entry || !entry.visionModel || !entry.wired || !s || !s.enabled || s.autoOff) return false;
+        if (!resolvedKeys[id] || enabled[id] === false) return false;
+        if (id === 'cloudflare' && !config.cloudflareAccountId) return false;
+        return true;
+      });
+      if (!visionEligible) {
+        return res.status(503).json({ error: 'Image questions need a vision-capable provider. No vision provider is available right now. Please try again later.' });
+      }
+    }
     // NO FAKE ANSWER. If no provider key is configured at all, say so honestly.
     if (!resolvedKeys.gemini && !resolvedKeys.groq && !resolvedKeys.openrouter && !resolvedKeys.mistral && !resolvedKeys.cohere && !resolvedKeys.iteracompute && !resolvedKeys.pollinations && !resolvedKeys.cloudflare && !resolvedKeys.nvidia && !resolvedKeys.muse) {
       return res.status(503).json({ error: 'AI service is not configured yet. Please try again later.' });
@@ -94,7 +151,7 @@ router.post('/ask', requireAuth, csrfProtect, dbRateLimit({ limit: 30, windowMin
     // over env keys; panel-disabled providers are skipped and never
     // auto-turned on. If every provider fails, the honest 502 below is
     // the answer, never a fake.
-    const prompt = buildTutorPrompt({ country, province, className, board, subject, question });
+    const prompt = buildTutorPrompt({ country, province, className, board, subject, question, imageAttached: !!image });
     // Per-attempt panel bookkeeping: fire-and-forget, never blocks an answer.
     const onAttempt = (att) => {
       recordAttempt(getClient(), att).catch((e) => console.error('provider event record failed:', e.message));
@@ -106,6 +163,7 @@ router.post('/ask', requireAuth, csrfProtect, dbRateLimit({ limit: 30, windowMin
       onAttempt,
       limits,
       todayCounts,
+      image: image || undefined,
     });
     if (!result) {
       // Clear reason when nothing could even be attempted: every free
@@ -134,7 +192,10 @@ router.post('/ask', requireAuth, csrfProtect, dbRateLimit({ limit: 30, windowMin
     const safeHtml = aiTextToSafeHtml(raw);
     const c = getClient();
     // Privacy-aware storage: question + answer only. Photos are never stored.
-    await c.execute({ sql: 'INSERT INTO exammate_history (user_id, country, province, class_name, subject, question, answer, provider) VALUES (?,?,?,?,?,?,?,?)', args: [req.user.userId, country, province, className, subject, question, raw, result.provider] });
+    // Image asks store the question text plus a marker, or just the marker
+    // when no question text was given — never the image data itself.
+    const storedQuestion = image ? (question ? question + ' [Image attached]' : '[Image attached]') : question;
+    await c.execute({ sql: 'INSERT INTO exammate_history (user_id, country, province, class_name, subject, question, answer, provider) VALUES (?,?,?,?,?,?,?,?)', args: [req.user.userId, country, province, className, subject, storedQuestion, raw, result.provider] });
     await c.execute({ sql: 'INSERT INTO ai_usage (user_id, tokens_used, provider) VALUES (?,?,?)', args: [req.user.userId, Math.ceil(raw.length / 4), result.provider] });
     // 80% usage warning (against the EFFECTIVE limit: custom if set, else
     // published; no limit means no warning) and limit-hit notification.
