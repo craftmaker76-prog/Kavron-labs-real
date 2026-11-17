@@ -34,12 +34,18 @@ app.use(cors({ origin: (origin, cb) => {
 }, credentials: true }));
 app.use(cookieParser());
 // Request size limits: global small limit, so a huge body cannot crash the server.
-// ExamMate route gets its own larger limit below in its router if needed.
+// ExamMate accepts an optional base64 image (up to 2 MB decoded, ~2.7 MB as
+// base64), so its router is mounted here with its own 3 MB JSON parser,
+// BEFORE the global parser. body-parser skips a body it already parsed
+// (req._body), so the global 100kb parser leaves exammate bodies alone
+// while every other route keeps the 100kb limit. 3 MB stays under Vercel's
+// ~4.5 MB function request cap; the route still enforces its own 2 MB
+// decoded-image cap. Do NOT re-mount /api/exammate below.
+app.use('/api/exammate', express.json({ limit: '3mb' }), require('./routes/exammate'));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 app.use('/', require('./routes/health'));
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/exammate', require('./routes/exammate'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/pdf', require('./routes/pdfProtect'));
 app.use('/api/admin', require('./routes/admin'));
