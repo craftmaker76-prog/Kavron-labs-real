@@ -30,6 +30,11 @@ module.exports = {
   // tokens cannot power this — only a Model API key can.
   museKey: (process.env.MODEL_API_KEY || '').trim(),
   groqModel: (process.env.GROQ_MODEL || 'openai/gpt-oss-20b').trim(),
+  // ExamMate image questions only: Groq's multimodal model (verified from
+  // Groq's vision docs 2026-11-17). The text model above is text-only and
+  // is never used for image asks. Cloudflare needs no vision override —
+  // it reuses cloudflareModel for text and vision.
+  groqVisionModel: (process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b').trim(),
   openrouterModel: (process.env.OPENROUTER_MODEL || 'openrouter/free').trim(),
   mistralModel: (process.env.MISTRAL_MODEL || 'ministral-8b-latest').trim(),
   cohereModel: (process.env.COHERE_MODEL || 'command-a-plus-05-2026').trim(),
