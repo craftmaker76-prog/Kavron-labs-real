@@ -74,6 +74,11 @@ function updateGates(){
   $('subject').disabled = !c4;
   $('q').disabled = !ready;
   $('askBtn').disabled = !ready;
+  // Vision (image questions): the attach control is gated by this same
+  // step-gate lock — unusable until all five steps are complete.
+  $('attachBtn').disabled = !ready;
+  $('imageInput').disabled = !ready;
+  $('removeImageBtn').disabled = !ready;
   const miss = firstMissing(v);
   $('status').textContent = miss || '';
   // Error styling (user requirement 2026-11-04): a missing step shows as an
@@ -87,6 +92,120 @@ $('provinceText').addEventListener('input', updateGates);
 $('className').addEventListener('input', updateGates);
 $('board').addEventListener('input', updateGates);
 $('subject').addEventListener('input', updateGates);
+
+// Vision — image questions (2026-11-17). An attached image is compressed
+// in the browser before sending: resized to max 1024px on the longest side
+// (aspect ratio kept, never upscaled), exported as JPEG quality 0.8. The
+// original file bytes are never sent, which also strips EXIF/GPS metadata.
+// Previews use data: URLs (CSP imgSrc allows 'self' and data: only — never
+// blob URLs). The question text is optional when an image is attached.
+const MAX_IMAGE_SIDE = 1024;
+const JPEG_QUALITY = 0.8;
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+let attachedImage = null; // Compressed JPEG data URL string, or null.
+let imageProcessing = false; // True while a selected image is compressing.
+let imageJob = 0; // Guards against overlapping selections: only the latest wins.
+function showStatusError(msg){
+  $('status').textContent = msg;
+  $('status').classList.add('error');
+}
+function clearAttachedImage(){
+  attachedImage = null;
+  $('imageInput').value = '';
+  $('imagePreview').removeAttribute('src');
+  $('imagePreviewWrap').hidden = true;
+}
+function readFileAsDataURL(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => resolve(reader.result));
+    reader.addEventListener('error', () => reject(new Error('read')));
+    reader.readAsDataURL(file);
+  });
+}
+async function decodeImage(file){
+  // Prefer createImageBitmap so phone photos keep their EXIF orientation.
+  if(window.createImageBitmap){
+    try{
+      const bitmap = await createImageBitmap(file, {imageOrientation: 'from-image'});
+      return {source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close()};
+    }catch(e){ /* fall through to the Image-element path below */ }
+  }
+  const dataUrl = await readFileAsDataURL(file);
+  const img = await new Promise((resolve, reject) => {
+    const im = new Image();
+    im.addEventListener('load', () => resolve(im));
+    im.addEventListener('error', () => reject(new Error('decode')));
+    im.src = dataUrl;
+  });
+  return {source: img, width: img.naturalWidth, height: img.naturalHeight, close: null};
+}
+async function compressImage(file){
+  const decoded = await decodeImage(file);
+  if(!decoded.width || !decoded.height) throw new Error('decode');
+  const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(decoded.width, decoded.height));
+  const targetWidth = Math.max(1, Math.round(decoded.width * scale));
+  const targetHeight = Math.max(1, Math.round(decoded.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext('2d');
+  // JPEG has no transparency: paint white behind transparent PNG pixels.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, targetWidth, targetHeight);
+  ctx.drawImage(decoded.source, 0, 0, targetWidth, targetHeight);
+  if(decoded.close) decoded.close();
+  let dataUrl;
+  let byteSize;
+  const blob = await new Promise(resolve => {
+    if(canvas.toBlob) canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY);
+    else resolve(null);
+  });
+  if(blob){
+    byteSize = blob.size;
+    dataUrl = await readFileAsDataURL(blob);
+  }else{
+    dataUrl = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+    const base64 = dataUrl.split(',')[1] || '';
+    byteSize = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+  }
+  if(byteSize > MAX_IMAGE_BYTES) throw new Error('too-large');
+  if(!dataUrl || dataUrl.length < 100) throw new Error('decode');
+  return dataUrl;
+}
+async function onImageSelected(){
+  const input = $('imageInput');
+  const file = input.files && input.files[0];
+  if(!file) return;
+  if(file.type && file.type.indexOf('image/') !== 0){
+    clearAttachedImage();
+    showStatusError('Please choose an image file (JPEG, PNG, or WebP).');
+    return;
+  }
+  const job = ++imageJob;
+  imageProcessing = true;
+  $('status').textContent = 'Preparing your image…';
+  $('status').classList.remove('error');
+  try{
+    const dataUrl = await compressImage(file);
+    if(job !== imageJob) return; // A newer selection superseded this one.
+    attachedImage = dataUrl;
+    $('imagePreview').src = dataUrl;
+    $('imagePreviewWrap').hidden = false;
+    $('status').textContent = '';
+    $('status').classList.remove('error');
+  }catch(e){
+    if(job !== imageJob) return;
+    clearAttachedImage();
+    if(e && e.message === 'too-large') showStatusError('That image is too large even after compression. Please choose a smaller image.');
+    else showStatusError('Could not read that image. Please choose a JPEG, PNG, or WebP image.');
+  }finally{
+    if(job === imageJob) imageProcessing = false;
+  }
+}
+$('attachBtn').addEventListener('click', () => { $('imageInput').click(); });
+$('imageInput').addEventListener('change', onImageSelected);
+$('removeImageBtn').addEventListener('click', clearAttachedImage);
 async function checkLogin(){
   const r = await fetch('/api/auth/me', {credentials:'include'});
   if(!r.ok){ $('loginGate').hidden = false; $('toolUI').hidden = true; return null; }
@@ -108,24 +227,34 @@ async function ask(){
   const v = stepValues();
   const miss = firstMissing(v);
   if(miss){ $('status').textContent = miss; $('status').classList.add('error'); return; }
-  if(!q){ $('status').textContent = 'Please type a question.'; $('status').classList.add('error'); return; }
+  if(imageProcessing){ showStatusError('Please wait while your image is being prepared.'); return; }
+  if(!q && !attachedImage){ showStatusError('Please type a question or attach an image.'); return; }
   const meR = await fetch('/api/auth/me', {credentials:'include'});
   if(!meR.ok){ $('status').textContent = 'Please log in first.'; $('status').classList.add('error'); $('loginGate').hidden = false; $('toolUI').hidden = true; return; }
   const me = await meR.json();
-  addMsg('user', v.subject + ' · ' + v.className + ' · ' + v.board + ' · ' + v.country + ' / ' + v.province, q, false);
+  const imageToSend = attachedImage;
+  const userText = imageToSend ? (q ? q + '\n[Image attached]' : '[Image attached]') : q;
+  addMsg('user', v.subject + ' · ' + v.className + ' · ' + v.board + ' · ' + v.country + ' / ' + v.province, userText, false);
   $('q').value = '';
   $('askBtn').disabled = true;
   $('status').textContent = 'Getting your answer… This can take up to a minute.';
   // Loading text is information, not an error — normal styling.
   $('status').classList.remove('error');
+  const payload = {question:q, subject: v.subject, country: v.country, province: v.province, className: v.className, board: v.board};
+  if(imageToSend) payload.image = imageToSend;
+  let askOk = false;
   try{
-    const r = await fetch('/api/exammate/ask', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken}, credentials:'include', body:JSON.stringify({question:q, subject: v.subject, country: v.country, province: v.province, className: v.className, board: v.board})});
+    const r = await fetch('/api/exammate/ask', {method:'POST', headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrfToken}, credentials:'include', body:JSON.stringify(payload)});
     const j = await r.json();
     if(!r.ok) addMsg('err', '', j.error || 'Something went wrong. Please try again.', false);
-    else addMsg('ai', 'ExamMate', j.answerHtml || 'No answer received.', true);
+    else{ addMsg('ai', 'ExamMate', j.answerHtml || 'No answer received.', true); askOk = true; }
   }catch(e){
     addMsg('err', '', 'Network error. Please check your connection and try again.', false);
   }
+  // Clear the attached image only after a successful answer, so a failed ask
+  // keeps it for retry. The identity check keeps a newer selection (picked
+  // while this ask was in flight) intact.
+  if(askOk && attachedImage === imageToSend) clearAttachedImage();
   updateGates();
 }
 $('askBtn').addEventListener('click', ask);

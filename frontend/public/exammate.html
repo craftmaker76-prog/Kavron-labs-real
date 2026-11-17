@@ -39,8 +39,14 @@
 </section>
 <div id="chat" class="chat"></div>
 <p id="status" class="muted"></p>
+<div id="imagePreviewWrap" class="image-preview" hidden>
+<img id="imagePreview" alt="Attached image preview">
+<button id="removeImageBtn" type="button">Remove image</button>
+</div>
 <div class="composer">
 <textarea id="q" placeholder="Type your question here..."></textarea>
+<button id="attachBtn" type="button">Attach image</button>
+<input id="imageInput" type="file" accept="image/*" aria-label="Choose an image" hidden>
 <button id="askBtn">Ask ExamMate</button>
 </div>
 <p class="muted small">This chat shows this visit only. Your questions are saved to your account. Answers appear in the language of your question.</p>

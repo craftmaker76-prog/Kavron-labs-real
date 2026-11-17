@@ -43,3 +43,13 @@ body, .chat, .msg, .composer input, .composer textarea, .composer button {
    frontend/public/exammate.css — do NOT replace that file, or the Line 1
    markdown rules would be lost. */
 #status.error{color:#DC2626;font-weight:600}
+
+/* Vision — image questions (2026-11-17): preview thumbnail row above the
+   composer. The attach button itself needs no rule: as a <button> inside
+   .composer it inherits the existing button styling. The [hidden] rule is
+   required because .image-preview{display:flex} would otherwise override
+   the browser's default hiding of the hidden attribute. */
+.image-preview{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.image-preview[hidden]{display:none}
+.image-preview img{width:96px;height:96px;object-fit:cover;border:1px solid #e2e8f0;border-radius:8px}
+.image-preview button{white-space:nowrap}
