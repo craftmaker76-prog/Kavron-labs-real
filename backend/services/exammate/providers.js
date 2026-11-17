@@ -51,8 +51,18 @@
 // question count); a provider at/over its limit is skipped for the day.
 // Omitted maps = no limit filtering (defensive default only — the route
 // always passes both).
+// VISION (ExamMate image questions, v1): askWithFallback accepts an
+// optional `image` (base64 data URL). When present, ONLY vision-capable
+// providers are attempted, in the same registry order, with the same
+// enabled/limit/deadline/onAttempt logic: Groq with its vision model
+// (GROQ_VISION_MODEL, default qwen/qwen3.8-27b) then Cloudflare with its
+// usual model. Vision capability comes from the registry `visionModel`
+// field — every other provider (including ON text-only ones) is skipped,
+// and the Muse step is skipped entirely for image asks. When no image is
+// present, behavior is identical to the text-only chain.
+const { getProvider } = require('./registry');
 
-async function callChatCompletions({ baseUrl, key, model, prompt, timeoutMs, extraBody }) {
+async function callChatCompletions({ baseUrl, key, model, prompt, timeoutMs, extraBody, image }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -62,7 +72,9 @@ async function callChatCompletions({ baseUrl, key, model, prompt, timeoutMs, ext
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
       body: JSON.stringify({
         model,
-        messages: [{ role: 'user', content: prompt }],
+        // Vision: OpenAI content parts (text + image_url data URL). No
+        // image => the plain string content, byte-identical to before.
+        messages: [{ role: 'user', content: image ? [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: image } }] : prompt }],
         temperature: 0.7,
         ...(extraBody || {}),
       }),
@@ -114,11 +126,25 @@ async function callGemini({ key, model, prompt, timeoutMs }) {
 // passes no seam, so production always uses this exact value.
 const OVERALL_DEADLINE_MS = 17000;
 
-async function askWithFallback({ prompt, config, enabled, onAttempt, limits, todayCounts, overallDeadlineMs }) {
+async function askWithFallback({ prompt, config, enabled, onAttempt, limits, todayCounts, overallDeadlineMs, image }) {
   const started = Date.now();
   const deadline = started + (Number.isFinite(overallDeadlineMs) ? overallDeadlineMs : OVERALL_DEADLINE_MS);
   const remainingMs = () => deadline - Date.now();
   const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+  // Vision: only providers with a registry visionModel are attempted, and
+  // only with their vision model. Groq's vision model comes from config
+  // (GROQ_VISION_MODEL env override wins, registry default is the
+  // fallback); Cloudflare reuses its text model for vision.
+  const hasImage = !!image;
+  const isVisionProvider = (id) => {
+    const entry = getProvider(id);
+    return !!(entry && entry.visionModel);
+  };
+  const visionModelFor = (id) => {
+    if (id === 'groq') return config.groqVisionModel || (getProvider('groq') && getProvider('groq').visionModel);
+    if (id === 'cloudflare') return config.cloudflareModel || (getProvider('cloudflare') && getProvider('cloudflare').visionModel);
+    return null;
+  };
   const isEnabled = (id) => !enabled || enabled[id] !== false;
   const underLimit = (id) => {
     if (!limits) return true;
@@ -146,37 +172,41 @@ async function askWithFallback({ prompt, config, enabled, onAttempt, limits, tod
   // DEADLINE: every attempt is capped at the time remaining until the
   // shared deadline; when no budget remains the walk stops immediately.
   const attempts = [];
-  if (config.geminiKey) {
+  // Gemini is skipped for image asks: its generateContent shape differs
+  // (inlineData), out of v1 vision scope.
+  if (!hasImage && config.geminiKey) {
     // 25s nominal: do NOT cut Gemini to 15s — its real successes take
     // 18-22s. The deadline cap below is what keeps an ask under 17s.
     attempts.push({ id: 'gemini', timeoutMs: 25000, call: (t) => callGemini({ key: config.geminiKey, model: geminiModel, prompt, timeoutMs: t }) });
   }
-  if (config.groqKey) attempts.push({ id: 'groq', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://api.groq.com/openai/v1', key: config.groqKey, model: config.groqModel, prompt, timeoutMs: t }) });
-  if (config.openrouterKey) attempts.push({ id: 'openrouter', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://openrouter.ai/api/v1', key: config.openrouterKey, model: config.openrouterModel, prompt, timeoutMs: t }) });
-  if (config.mistralKey) attempts.push({ id: 'mistral', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://api.mistral.ai/v1', key: config.mistralKey, model: config.mistralModel, prompt, timeoutMs: t }) });
-  if (config.cohereKey) attempts.push({ id: 'cohere', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://api.cohere.ai/compatibility/v1', key: config.cohereKey, model: config.cohereModel, prompt, timeoutMs: t }) });
+  // Groq: text model for text asks, vision model for image asks.
+  if (config.groqKey && (!hasImage || (isVisionProvider('groq') && visionModelFor('groq')))) attempts.push({ id: 'groq', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://api.groq.com/openai/v1', key: config.groqKey, model: hasImage ? visionModelFor('groq') : config.groqModel, prompt, timeoutMs: t, image }) });
+  if (!hasImage && config.openrouterKey) attempts.push({ id: 'openrouter', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://openrouter.ai/api/v1', key: config.openrouterKey, model: config.openrouterModel, prompt, timeoutMs: t }) });
+  if (!hasImage && config.mistralKey) attempts.push({ id: 'mistral', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://api.mistral.ai/v1', key: config.mistralKey, model: config.mistralModel, prompt, timeoutMs: t }) });
+  if (!hasImage && config.cohereKey) attempts.push({ id: 'cohere', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://api.cohere.ai/compatibility/v1', key: config.cohereKey, model: config.cohereModel, prompt, timeoutMs: t }) });
   // IteraCompute Qwen (free tier, no card): LAST among free providers on
   // purpose — free capacity queues and the promo ends 24 Nov 2026, so it
   // only answers when every proven free provider failed or is skipped.
   // reasoning:false follows IteraCompute's own example: direct answers
   // without thinking tokens, which keeps asks inside the 17s deadline.
   // 20s nominal so Qwen can actually use the full 17s overall budget.
-  if (config.iteracomputeKey) attempts.push({ id: 'iteracompute', timeoutMs: 20000, call: (t) => callChatCompletions({ baseUrl: 'https://api.iteracompute.com/v1', key: config.iteracomputeKey, model: config.iteracomputeModel, prompt, timeoutMs: t, extraBody: { reasoning: false } }) });
+  if (!hasImage && config.iteracomputeKey) attempts.push({ id: 'iteracompute', timeoutMs: 20000, call: (t) => callChatCompletions({ baseUrl: 'https://api.iteracompute.com/v1', key: config.iteracomputeKey, model: config.iteracomputeModel, prompt, timeoutMs: t, extraBody: { reasoning: false } }) });
   // Pollinations (keyed gen API, OpenAI-compatible): LAST among free
   // providers on purpose — best-effort service, Pollen credits, no uptime
   // guarantee, so it only answers when every other free provider failed
   // or is skipped. Secret key from enter.pollinations.ai (server-side).
-  if (config.pollinationsKey) attempts.push({ id: 'pollinations', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://gen.pollinations.ai/v1', key: config.pollinationsKey, model: config.pollinationsModel, prompt, timeoutMs: t }) });
+  if (!hasImage && config.pollinationsKey) attempts.push({ id: 'pollinations', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://gen.pollinations.ai/v1', key: config.pollinationsKey, model: config.pollinationsModel, prompt, timeoutMs: t }) });
   // Cloudflare Workers AI (OpenAI-compatible /ai/v1, account-scoped URL):
   // AFTER pollinations. Token is the panel key; the Account ID comes from
   // the CLOUDFLARE_ACCOUNT_ID env var — skipped when either is missing.
   // Free tier is 10,000 Neurons/day (compute units, not a question cap),
   // so no daily question limit is set for it.
-  if (config.cloudflareKey && config.cloudflareAccountId) attempts.push({ id: 'cloudflare', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://api.cloudflare.com/client/v4/accounts/' + config.cloudflareAccountId + '/ai/v1', key: config.cloudflareKey, model: config.cloudflareModel, prompt, timeoutMs: t }) });
+  // Cloudflare: same model for text and vision, image attached on image asks.
+  if (config.cloudflareKey && config.cloudflareAccountId && (!hasImage || (isVisionProvider('cloudflare') && visionModelFor('cloudflare')))) attempts.push({ id: 'cloudflare', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://api.cloudflare.com/client/v4/accounts/' + config.cloudflareAccountId + '/ai/v1', key: config.cloudflareKey, model: hasImage ? visionModelFor('cloudflare') : config.cloudflareModel, prompt, timeoutMs: t, image }) });
   // NVIDIA NIM (build.nvidia.com, free prototyping credits, OpenAI-compatible):
   // LAST — trial credits that deplete, so it only answers when every other
   // provider failed or is skipped. Note: NIM auth failures are 403, not 401.
-  if (config.nvidiaKey) attempts.push({ id: 'nvidia', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://integrate.api.nvidia.com/v1', key: config.nvidiaKey, model: config.nvidiaModel, prompt, timeoutMs: t }) });
+  if (!hasImage && config.nvidiaKey) attempts.push({ id: 'nvidia', timeoutMs: 15000, call: (t) => callChatCompletions({ baseUrl: 'https://integrate.api.nvidia.com/v1', key: config.nvidiaKey, model: config.nvidiaModel, prompt, timeoutMs: t }) });
 
   for (const att of attempts) {
     if (!isEnabled(att.id) || !underLimit(att.id)) continue;
@@ -192,7 +222,8 @@ async function askWithFallback({ prompt, config, enabled, onAttempt, limits, tod
   // (MODEL_API_KEY) can. No key configured => skipped, never faked.
   // Muse is a dormant fallback slot, not part of manual selection: its
   // step is unchanged (key + enabled + budget, no limit logic).
-  if (config.museKey && isEnabled('muse')) {
+  // Muse is a dormant TEXT-ONLY slot: never attempted for image asks.
+  if (!hasImage && config.museKey && isEnabled('muse')) {
     const remaining = remainingMs();
     if (remaining > 0) {
       const r = await callChatCompletions({ baseUrl: 'https://api.meta.ai/v1', key: config.museKey, model: config.museModel, prompt, timeoutMs: Math.min(10000, remaining) });
